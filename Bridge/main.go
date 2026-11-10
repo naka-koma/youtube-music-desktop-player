@@ -405,11 +405,7 @@ func artwork(w http.ResponseWriter, r *http.Request) {
 }
 
 func state(w http.ResponseWriter, _ *http.Request) {
-	snapshot := collectSkinState()
-	fullscreenCurrent.Lock()
-	fullscreenCurrent.snapshot = snapshot
-	fullscreenCurrent.Unlock()
-	write(w, snapshot)
+	write(w, currentSkinState())
 }
 
 func collectSkinState() skinSnapshot {

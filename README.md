@@ -36,7 +36,9 @@ Click the queue icon beside `⋯` to open the current YTMDesktop2 queue below th
 
 ### Fullscreen view
 
-Double-click the album cover or click its expand icon to open the desktop fullscreen skin. The regular panel is hidden while fullscreen is open and returns in place when you click the fullscreen background. Move the pointer to show the fullscreen controls.
+Double-click the album cover or click its expand icon to open the desktop fullscreen skin. The regular panel is hidden while fullscreen is open and returns in place when you click the fullscreen background. Move the pointer to show the fullscreen controls. The title uses a fixed font size. In both views, long titles scroll horizontally, pause at each end, and restart from the beginning when the track changes. Titles that fit stay still. You can also return to the panel with **Exit fullscreen** in the right-click menu.
+
+Fullscreen opens on monitor 2 by default. Choose **Move to next monitor** in its right-click menu to change and save the target display. You can also edit `FullscreenMonitor` in `@Resources\Fullscreen.Settings.inc` and refresh the fullscreen skin. This setting takes precedence over coordinates in Rainmeter Manage. Fullscreen fetches playback independently of the compact panel.
 
 ## Playlists
 

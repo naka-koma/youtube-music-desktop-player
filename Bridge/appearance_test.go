@@ -2,14 +2,18 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -86,11 +90,14 @@ func TestChooseFontWindowsStructureLayout(t *testing.T) {
 func TestFullscreenStatePreservesJapaneseAndEscapesSeparators(t *testing.T) {
 	fullscreenCurrent.Lock()
 	previous := fullscreenCurrent.snapshot
+	previousAt := fullscreenCurrent.updatedAt
 	fullscreenCurrent.snapshot = skinSnapshot{Title: "Ab|日本語", Author: "Artist", Position: "0:47 / 2:58", Playing: true}
+	fullscreenCurrent.updatedAt = time.Now()
 	fullscreenCurrent.Unlock()
 	t.Cleanup(func() {
 		fullscreenCurrent.Lock()
 		fullscreenCurrent.snapshot = previous
+		fullscreenCurrent.updatedAt = previousAt
 		fullscreenCurrent.Unlock()
 	})
 	w := httptest.NewRecorder()
@@ -98,5 +105,56 @@ func TestFullscreenStatePreservesJapaneseAndEscapesSeparators(t *testing.T) {
 	line := w.Body.String()
 	if !strings.HasPrefix(line, "41427ce697a5e69cace8aa9e|415254495354||303a3437202f20323a3538|true|false|") {
 		t.Fatalf("unexpected fullscreen state: %q", line)
+	}
+}
+
+// No /state (compact skin) requests are made before either fullscreen poll.
+func TestFullscreenRefreshesPlaybackWithoutCompactSkin(t *testing.T) {
+	var trackRequests atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/track":
+			trackRequests.Add(1)
+			fmt.Fprint(w, `{"video":{"title":"Independent","author":"Artist"}}`)
+		case "/track/state":
+			fmt.Fprint(w, `{"playing":true,"progress":12,"duration":100,"percentage":12}`)
+		case "/track/volume":
+			fmt.Fprint(w, `{"volume":50}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer upstream.Close()
+	oldAPI, oldDir := apiBase, dataDir
+	apiBase, dataDir = upstream.URL, t.TempDir()
+	fullscreenCurrent.Lock()
+	oldSnapshot, oldTime := fullscreenCurrent.snapshot, fullscreenCurrent.updatedAt
+	fullscreenCurrent.updatedAt = time.Time{}
+	fullscreenCurrent.Unlock()
+	t.Cleanup(func() {
+		apiBase, dataDir = oldAPI, oldDir
+		fullscreenCurrent.Lock()
+		fullscreenCurrent.snapshot, fullscreenCurrent.updatedAt = oldSnapshot, oldTime
+		fullscreenCurrent.Unlock()
+	})
+	poll := func() {
+		t.Helper()
+		w := httptest.NewRecorder()
+		fullscreenState(w, httptest.NewRequest("GET", "/fullscreen/state", nil))
+		if !strings.HasPrefix(w.Body.String(), "494e444550454e44454e54|") || !strings.Contains(w.Body.String(), "|true|false|12.000|50.000|") {
+			t.Fatalf("fullscreen did not collect live playback: %s", w.Body.String())
+		}
+	}
+	poll()
+	state(httptest.NewRecorder(), httptest.NewRequest("GET", "/state", nil))
+	if got := trackRequests.Load(); got != 1 {
+		t.Fatalf("overlapping polls made %d upstream requests; want 1", got)
+	}
+	fullscreenCurrent.Lock()
+	fullscreenCurrent.updatedAt = time.Now().Add(-time.Second)
+	fullscreenCurrent.Unlock()
+	poll()
+	if got := trackRequests.Load(); got != 2 {
+		t.Fatalf("expired playback was not refreshed: %d requests", got)
 	}
 }

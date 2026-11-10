@@ -18,8 +18,9 @@ import (
 )
 
 var fullscreenCurrent struct {
-	sync.RWMutex
-	snapshot skinSnapshot
+	sync.Mutex
+	snapshot  skinSnapshot
+	updatedAt time.Time
 }
 
 var fullscreenCache struct {
@@ -31,10 +32,20 @@ var fullscreenCache struct {
 	artCheck                       time.Time
 }
 
+// Both skins can refresh playback independently. Coalesce overlapping polls so
+// opening fullscreen does not double the upstream API traffic.
+func currentSkinState() skinSnapshot {
+	fullscreenCurrent.Lock()
+	defer fullscreenCurrent.Unlock()
+	if fullscreenCurrent.updatedAt.IsZero() || time.Since(fullscreenCurrent.updatedAt) >= 500*time.Millisecond {
+		fullscreenCurrent.snapshot = collectSkinState()
+		fullscreenCurrent.updatedAt = time.Now()
+	}
+	return fullscreenCurrent.snapshot
+}
+
 func fullscreenState(w http.ResponseWriter, r *http.Request) {
-	fullscreenCurrent.RLock()
-	snapshot := fullscreenCurrent.snapshot
-	fullscreenCurrent.RUnlock()
+	snapshot := currentSkinState()
 	if snapshot.Title == "" {
 		snapshot.Title, snapshot.Position = "Nothing playing", "0:00 / 0:00"
 	}
