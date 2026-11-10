@@ -1,0 +1,15 @@
+# Local build output
+Bridge/dist/
+Bridge/bin/
+Bridge/obj/
+Bridge/publish/
+
+# Local credentials and editor/OS files
+*.token
+token
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+Desktop.ini

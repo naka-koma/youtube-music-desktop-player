@@ -1,0 +1,8 @@
+{
+  "playlists": [
+    { "name": "Liquid DnB", "id": "REPLACE_WITH_PLAYLIST_ID" },
+    { "name": "Trance", "id": "REPLACE_WITH_PLAYLIST_ID" },
+    { "name": "Focus", "id": "REPLACE_WITH_PLAYLIST_ID" },
+    { "name": "Favorites", "id": "REPLACE_WITH_PLAYLIST_ID" }
+  ]
+}
