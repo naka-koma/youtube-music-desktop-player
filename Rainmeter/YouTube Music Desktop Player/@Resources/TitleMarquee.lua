@@ -1,36 +1,25 @@
--- Shared single-line title marquee. Text is measured at its natural width and
--- clipped by a fixed container, so scrolling never changes the skin's size.
-local meterName, sourceName, containerName
-local lastText, lastWidth, lastViewport, lastTick, lastPixel
-local offset, elapsed, phase = 0, 0, "start"
+-- Rainmeter adapter shared by compact and fullscreen titles.
+local meterName, sourceName, containerName, renderer, marquee
+local lastText, lastWidth, lastViewport, lastTick
 
 function Initialize()
+    local components = SKIN:GetVariable("@") .. "Components/"
+    renderer = dofile(components .. "Renderer.lua")(SKIN)
+    marquee = dofile(components .. "Marquee.lua")()
     lastTick = os.clock()
     meterName = SELF:GetOption("TextMeter")
     sourceName = SELF:GetOption("SourceMeasure")
     containerName = SELF:GetOption("ViewportMeter")
 end
 
-local function position(value)
-    local x = -math.floor(value + 0.5)
-    if x == lastPixel then return end
-    lastPixel = x
-    -- MoveMeter preserves the cached text layout AND invalidates the skin.
-    -- SetX alone changes coordinates without scheduling a draw when every
-    -- fullscreen meter has UpdateDivider=-1 (unlike the compact view).
-    SKIN:Bang("!MoveMeter", tostring(x), "0", meterName)
-end
-
 local function reset()
-    offset, elapsed, phase = 0, 0, "start"
-    position(0)
+    marquee:reset()
+    renderer:move(meterName, 0, 0)
 end
 
 function Update()
-    -- Windows' clock is elapsed wall time. Keep the same speed when Rainmeter
-    -- reduces updates for a hidden skin, and avoid a jump after a long sleep.
     local now = os.clock()
-    local step = math.max(0, math.min(0.25, now - (lastTick or now)))
+    local seconds = now - (lastTick or now)
     lastTick = now
     local meter, viewport = SKIN:GetMeter(meterName), SKIN:GetMeter(containerName)
     local source = SKIN:GetMeasure(sourceName)
@@ -38,9 +27,9 @@ function Update()
     local text = source:GetStringValue() or ""
     if text ~= lastText then
         lastText, lastWidth = text, nil
-        SKIN:Bang("!UpdateMeter", meterName)
+        renderer:updateMeter(meterName)
         reset()
-        -- Let Rainmeter render the new text before reading its natural width.
+        -- Measure the new text after Rainmeter has applied its layout update.
         return 0
     end
     local width, available = meter:GetW(), viewport:GetW()
@@ -49,19 +38,9 @@ function Update()
         reset()
         return 0
     end
-    local overflow = width - available
-    if available <= 0 or overflow <= 1 or SKIN:GetVariable("RenderMarquee", "1") == "0" then return 0 end
-    local pause = math.max(0, SELF:GetNumberOption("PauseSeconds", 1.8))
-    elapsed = elapsed + step
-    if phase == "start" then
-        if elapsed >= pause then phase, elapsed = "scroll", 0 end
-    elseif phase == "scroll" then
-        local speed = math.max(1, SELF:GetNumberOption("ScrollSpeed", 30))
-        offset = math.min(overflow, offset + speed * step)
-        position(offset)
-        if offset >= overflow then phase, elapsed = "end", 0 end
-    elseif elapsed >= pause then
-        reset()
-    end
+    local enabled = available > 0 and SKIN:GetVariable("RenderMarquee", "1") ~= "0"
+    local offset = marquee:step(seconds, width - available,
+        SELF:GetNumberOption("ScrollSpeed", 30), SELF:GetNumberOption("PauseSeconds", 1.8), enabled)
+    renderer:move(meterName, -offset, 0)
     return offset
 end

@@ -7,6 +7,7 @@
 - 通常表示はルートの INI、全画面は `Fullscreen/Fullscreen.ini`。共通 Lua と設定は `@Resources/`。
 - `Bridge/` は Go 1.23 以降を使用。`127.0.0.1:38471` でスキン向けの API を提供する。
 - `scripts/Install-PlayerSkin.ps1` はビルドと配置、`scripts/Setup.ps1` は初回セットアップを担当する。
+- 描画部品の構成と責任は `docs/rendering.md` にまとめている。スクロール計算は `@Resources/Components/Marquee.lua`、再描画を含むRainmeter操作は `Components/Renderer.lua` に集約する。
 
 ## 編集と個人設定
 
@@ -38,6 +39,7 @@
 - 描画設定は3モードの切り替えと保存を確認し、更新頻度を変えても再生情報や操作が止まらないことを確認する。
 - `Scripts/tests/rendering.lua` は Lua 5.1 用の回帰テスト。`dofile('.../Scripts/tests/rendering.lua')('.../リポジトリのルート')` で実行でき、Rainmeter の Lua からも呼び出せる。
 - `Scripts/tests/fullscreen.lua` では部分更新、背景到着時の更新、不要な再描画の抑止、シーク後の閉じる判定を確認する。同じ方法で実行できる。
+- `Scripts/tests/components.lua` では部品単体の時間計算、座標の丸め、再描画要求、不要な更新の省略を確認する。
 - CPU 比較は同じ表示モード・曲・測定時間で行う。Rainmeter 全体の値には他のスキンも含まれるため、単発の数値から改善率を断定しない。
 - 滑らかさの確認では描画要求の発生・フレーム間隔の分布・最大停止時間・マウス位置の取得周期も確認する。Smooth の目標は約30fps。描画だけを速めて入力取得が約100msのままにならないようにする。
 - `git diff --check` を実行し、実際に確認できた結果と未再現の問題を区別して報告する。

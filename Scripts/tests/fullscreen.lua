@@ -10,7 +10,7 @@ return function(root)
         end)
     end
     local time,calls=0,{}
-    local values={ROOTCONFIG='Player',FullscreenMonitor='1', ['SCREENAREAWIDTH@1']='1920', ['SCREENAREAHEIGHT@1']='1080', ['@']='resources/'}
+    local values={ROOTCONFIG='Player',FullscreenMonitor='1', ['SCREENAREAWIDTH@1']='1920', ['SCREENAREAHEIGHT@1']='1080', ['@']=root .. '/Rainmeter/YouTube Music Desktop Player/@Resources/'}
     local data,pointer='', '0|0|false'
     local function payload(title,position,progress,image,blur,w,h)
         return table.concat({title or '5449544c45','415254495354','',position or '303a3031','true','false',progress or '1','50',image or '',blur or '',w or '0',h or '0',''},'|')

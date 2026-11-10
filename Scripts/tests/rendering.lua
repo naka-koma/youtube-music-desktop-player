@@ -63,7 +63,10 @@ return function(root)
             GetNumberOption=function(_, key, default) return ({PauseSeconds=0.2, ScrollSpeed=100})[key] or default end
         },
         SKIN={
-            GetVariable=function(_, key, default) return key=='RenderMarquee' and scroll or default end,
+            GetVariable=function(_, key, default)
+                if key=='@' then return resources end
+                return key=='RenderMarquee' and scroll or default
+            end,
             GetMeter=function(_, key) return key=='title' and titleMeter or {GetW=function() return viewport end} end,
             GetMeasure=function() return {GetStringValue=function() return text end} end,
             Bang=function(_, bang, a, b, target)

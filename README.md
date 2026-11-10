@@ -91,6 +91,8 @@ The selection applies to both views and persists across restarts. Rendering rate
 
 The menu saves the selection in `@Resources\Performance.Settings.inc`. Setup preserves this personal settings file. Timings come from bundled presets, so improvements apply without changing your saved mode.
 
+For the component boundaries and maintenance rules, see the [rendering developer guide](docs/rendering.md) (Japanese).
+
 ### Fullscreen settings
 
 Edit the installed `@Resources\Fullscreen.Settings.inc` to choose the Rainmeter monitor number and `FullscreenBackground` (`AlbumArt`, `None`, or `Custom`). For album art, set `FullscreenArtFit=Cover` to crop to the screen or use the default `Contain` to show the whole image over a blurred copy. `FullscreenArtAlign` sets the horizontal alignment in Contain mode: `Left` (default), `Center`, or `Right`.
