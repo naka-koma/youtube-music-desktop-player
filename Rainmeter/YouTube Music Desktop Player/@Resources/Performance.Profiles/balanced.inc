@@ -1,0 +1,8 @@
+[Variables]
+RenderInterval=66
+RenderMarquee=1
+RenderStateRate=15
+RenderFSStateRate=10
+RenderPointerRate=2
+RenderQueueRate=45
+RenderPlaylistRate=455

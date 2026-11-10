@@ -26,7 +26,7 @@ return function(root)
     performance.Select('balanced')
     assert(#calls==0, 'invalid or unchanged profile must not rewrite settings')
 
-    for _, case in ipairs({{'power',100,0,10}, {'smooth',33,1,30}, {'balanced',66,1,15}}) do
+    for _, case in ipairs({{'power',100,0,10}, {'smooth',30,1,33}, {'balanced',66,1,15}}) do
         mode, calls = 'other', {}
         performance.Select(case[1])
         local values = {}
@@ -37,9 +37,15 @@ return function(root)
             end
             assert(call[1]~='!ActivateConfig', 'do not activate unloaded skins')
         end
-        assert(values.RenderMode==case[1] and tonumber(values.RenderInterval)==case[2], 'profile interval')
-        assert(tonumber(values.RenderMarquee)==case[3], 'profile scrolling policy')
-        assert(tonumber(values.RenderStateRate)==case[4], 'keep playback polling near one second')
+        assert(values.RenderMode==case[1] and #calls==2, 'persist only the mode, not version-specific timings')
+        local preset=assert(io.open(resources .. 'Performance.Profiles/' .. case[1] .. '.inc', 'r'))
+        local contents=preset:read('*a');preset:close()
+        local timing={}
+        for key,value in contents:gmatch('(Render%w+)=(%d+)') do timing[key]=tonumber(value) end
+        assert(timing.RenderInterval==case[2], 'profile interval')
+        assert(timing.RenderMarquee==case[3], 'profile scrolling policy')
+        assert(timing.RenderStateRate==case[4], 'keep playback polling near one second')
+        assert(math.abs(timing.RenderStateRate*timing.RenderInterval-1000)<100, 'polling duration')
         assert(calls[#calls][1]=='!RefreshGroup' and calls[#calls][2]=='YouTubeMusicPlayer', 'refresh loaded player views after all writes')
     end
 

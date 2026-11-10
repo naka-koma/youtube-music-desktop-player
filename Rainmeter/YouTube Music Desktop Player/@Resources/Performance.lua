@@ -1,12 +1,8 @@
 local profiles = {
-    {id="power", label="Power Saver", interval=100, marquee=0},
-    {id="balanced", label="Balanced", interval=66, marquee=1},
-    {id="smooth", label="Smooth", interval=33, marquee=1}
+    {id="power", label="Power Saver"},
+    {id="balanced", label="Balanced"},
+    {id="smooth", label="Smooth"}
 }
-
-local function rate(milliseconds, interval)
-    return math.max(1, math.floor(milliseconds / interval + 0.5))
-end
 
 function Initialize()
     local selected = SKIN:GetVariable("RenderMode", "balanced")
@@ -25,17 +21,10 @@ function Select(id)
         if profile.id == id then chosen = profile; break end
     end
     if not chosen or SKIN:GetVariable("RenderMode", "balanced") == id then return end
-    local interval = chosen.interval
-    local values = {
-        {"RenderMode", chosen.id}, {"RenderInterval", interval},
-        {"RenderMarquee", chosen.marquee}, {"RenderStateRate", rate(1000, interval)},
-        {"RenderFSStateRate", rate(660, interval)}, {"RenderPointerRate", rate(100, interval)},
-        {"RenderQueueRate", rate(3000, interval)}, {"RenderPlaylistRate", rate(30000, interval)}
-    }
     local path = SKIN:GetVariable("@") .. "Performance.Settings.inc"
-    for _, value in ipairs(values) do
-        SKIN:Bang("!WriteKeyValue", "Variables", value[1], tostring(value[2]), path)
-    end
+    -- Store the choice only. Versioned presets supply timings on every load,
+    -- including when an older settings file still contains derived values.
+    SKIN:Bang("!WriteKeyValue", "Variables", "RenderMode", chosen.id, path)
     -- Refresh only loaded player skins; an unloaded compact view stays unloaded.
     SKIN:Bang("!RefreshGroup", "YouTubeMusicPlayer")
 end

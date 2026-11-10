@@ -87,9 +87,9 @@ Right-click either view and choose a mode. The active option is marked `(selecte
 | `Balanced` (default) | About 15fps | Scroll horizontally |
 | `Smooth` | About 30fps | Scroll horizontally |
 
-The selection applies to both views and persists across restarts. Playback information still refreshes roughly once per second, and playback controls remain available in every mode. CPU usage also depends on resolution, backgrounds, and other skins.
+The selection applies to both views and persists across restarts. Rendering rates are targets; actual cadence depends on your system. Playback information still refreshes roughly once per second, and playback controls remain available in every mode. Fullscreen updates only changed elements, so playback-time updates do not rebuild the background or title. CPU usage also depends on resolution, backgrounds, and other skins.
 
-The menu saves the selection in `@Resources\Performance.Settings.inc`. Setup preserves this personal settings file.
+The menu saves the selection in `@Resources\Performance.Settings.inc`. Setup preserves this personal settings file. Timings come from bundled presets, so improvements apply without changing your saved mode.
 
 ### Fullscreen settings
 
