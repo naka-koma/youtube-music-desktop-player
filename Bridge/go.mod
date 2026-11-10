@@ -1,3 +1,3 @@
-module ambient-music-dashboard/bridge
+module youtube-music-desktop-player/bridge
 
 go 1.23

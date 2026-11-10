@@ -3,9 +3,13 @@ Bridge/dist/
 Bridge/bin/
 Bridge/obj/
 Bridge/publish/
+Rainmeter/YouTube Music Desktop Player/@Resources/Fonts.User.inc
+Rainmeter/YouTube Music Desktop Player/@Resources/Fullscreen.Settings.inc
+Rainmeter/YouTube Music Desktop Player/@Resources/Backgrounds/Custom.inc
 
 # Local credentials and editor/OS files
 *.token
+client_secret*.json
 token
 .env
 .env.*

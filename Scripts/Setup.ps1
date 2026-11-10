@@ -8,8 +8,6 @@ param(
 $ErrorActionPreference = 'Stop'
 $ApiBaseUrl = $ApiBaseUrl.TrimEnd('/')
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$bridgeSource = Join-Path $projectRoot 'Bridge'
-$skinSource = Join-Path $projectRoot 'Rainmeter\AmbientMusic'
 
 function Find-YTMDesktop2 {
     $candidates = @(
@@ -88,9 +86,20 @@ function Complete-ApiPairing {
         Write-Host 'YTMDesktop2 API is reachable and authorization is not required; no token is needed.'
         return
     }
+    $tokenPath = Join-Path $env:LOCALAPPDATA 'AmbientMusicDashboard\token'
+    if (Test-Path -LiteralPath $tokenPath) {
+        $token = [IO.File]::ReadAllText($tokenPath).Trim()
+        if ($token) {
+            try {
+                $null = Invoke-RestMethod -Uri "$ApiBaseUrl/track/state" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 4
+                Write-Host 'Using the existing YTMDesktop2 API authorization.'
+                return
+            } catch { }
+        }
+    }
     $codeResponse = Invoke-RestMethod -Method Post -Uri "$ApiBaseUrl/auth/requestcode" -ContentType 'application/json' -Body (@{
         appId = 'ambientmusic'
-        appName = 'Ambient Music Dashboard'
+        appName = 'YouTube Music Desktop Player'
         appVersion = '1.0.0'
     } | ConvertTo-Json -Compress)
     Write-Host ''
@@ -135,28 +144,8 @@ if (-not $RainmeterRoot -or -not (Test-Path (Join-Path $RainmeterRoot 'Rainmeter
     throw 'Rainmeter was not found. Rerun with -RainmeterRoot pointing to its installation folder.'
 }
 
-$skinTarget = Join-Path $RainmeterRoot 'Skins\AmbientMusic'
-$bridgeTarget = Join-Path $skinTarget '@Resources\Bridge'
-$obsoleteExpanded = Join-Path $skinTarget 'Expanded.ini'
-if (Test-Path -LiteralPath $obsoleteExpanded) { Remove-Item -LiteralPath $obsoleteExpanded -Force }
-New-Item -ItemType Directory -Force -Path $bridgeTarget | Out-Null
-Copy-Item -Path (Join-Path $skinSource '*') -Destination $skinTarget -Recurse -Force
-if (-not (Test-Path (Join-Path $bridgeTarget 'playlists.json'))) {
-    Copy-Item -LiteralPath (Join-Path $bridgeSource 'playlists.json') -Destination (Join-Path $bridgeTarget 'playlists.json')
-}
-$bridgeExe = Join-Path $bridgeTarget 'AmbientMusicBridge.exe'
-$runningBridge = Get-CimInstance Win32_Process -Filter "Name = 'AmbientMusicBridge.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.ExecutablePath -eq $bridgeExe }
-if ($runningBridge) {
-    Stop-Process -Id $runningBridge.ProcessId -Force
-    Start-Sleep -Milliseconds 500
-}
-Push-Location $bridgeSource
-try {
-    & go build -trimpath -ldflags '-H=windowsgui' -o $bridgeExe .
-    if ($LASTEXITCODE -ne 0) { throw 'Go bridge build failed.' }
-} finally { Pop-Location }
-Write-Host "Installed the Rainmeter skin and Go bridge under $skinTarget"
+$bridgeExe = & (Join-Path $PSScriptRoot 'Install-PlayerSkin.ps1') -RainmeterRoot $RainmeterRoot
+Write-Host "Installed the YouTube Music Desktop Player skin and bridge."
 
 $runningYtm = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ytmExe } | Select-Object -First 1
 if (-not $runningYtm) {
@@ -201,5 +190,5 @@ try {
 }
 
 Write-Host ''
-Write-Host 'Setup is complete. In Rainmeter, load AmbientMusic\AmbientMusic.ini from Manage Rainmeter > Skins.' -ForegroundColor Green
+Write-Host 'Setup is complete. In Rainmeter, load YouTube Music Desktop Player\YouTube Music Desktop Player.ini from Manage Rainmeter > Skins.' -ForegroundColor Green
 Write-Host 'YTMDesktop2 remains available in the system tray while the bridge serves the Rainmeter skin.'

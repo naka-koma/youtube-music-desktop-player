@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,11 +17,37 @@ import (
 )
 
 type config struct {
-	Playlists []struct {
-		Name string `json:"name"`
-		ID   string `json:"id"`
-	} `json:"playlists"`
+	Playlists []playlist `json:"playlists"`
 }
+
+var playlistIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+func playlistID(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.Contains(value, "://") {
+		link, err := url.Parse(value)
+		if err != nil || (link.Scheme != "https" && link.Scheme != "http") || link.User != nil {
+			return ""
+		}
+		switch strings.ToLower(link.Hostname()) {
+		case "music.youtube.com", "youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be":
+			value = link.Query().Get("list")
+		default:
+			return ""
+		}
+	}
+	if strings.HasPrefix(value, "REPLACE_") || !playlistIDPattern.MatchString(value) {
+		return ""
+	}
+	return value
+}
+
+type trackThumbnail struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
 type trackInfo struct {
 	ID    string `json:"id"`
 	Video struct {
@@ -28,9 +55,7 @@ type trackInfo struct {
 		Title     string `json:"title"`
 		Author    string `json:"author"`
 		Thumbnail struct {
-			Thumbnails []struct {
-				URL string `json:"url"`
-			} `json:"thumbnails"`
+			Thumbnails []trackThumbnail `json:"thumbnails"`
 		} `json:"thumbnail"`
 	} `json:"video"`
 	Meta struct {
@@ -50,20 +75,25 @@ type volumeInfo struct {
 	Volume float64 `json:"volume"`
 }
 type skinSnapshot struct {
-	Connected  bool    `json:"connected"`
-	Title      string  `json:"title"`
-	Author     string  `json:"author"`
-	Thumbnail  string  `json:"thumbnail"`
-	Playing    bool    `json:"playing"`
-	Progress   float64 `json:"progress"`
-	Duration   float64 `json:"duration"`
-	Percentage float64 `json:"percentage"`
-	Position   string  `json:"position"`
-	Shuffle    bool    `json:"shuffle"`
-	Repeat     bool    `json:"repeat"`
-	Liked      bool    `json:"liked"`
-	Volume     float64 `json:"volume"`
-	Muted      bool    `json:"muted"`
+	trackID        string
+	artCandidates  []trackThumbnail
+	Connected      bool    `json:"connected"`
+	Title          string  `json:"title"`
+	Author         string  `json:"author"`
+	Thumbnail      string  `json:"thumbnail"`
+	Playing        bool    `json:"playing"`
+	Progress       float64 `json:"progress"`
+	Duration       float64 `json:"duration"`
+	Percentage     float64 `json:"percentage"`
+	Position       string  `json:"position"`
+	Shuffle        bool    `json:"shuffle"`
+	Repeat         bool    `json:"repeat"`
+	Liked          bool    `json:"liked"`
+	Volume         float64 `json:"volume"`
+	Muted          bool    `json:"muted"`
+	BackgroundFile string  `json:"backgroundFile"`
+	Elapsed        string  `json:"elapsed"`
+	Total          string  `json:"total"`
 }
 
 var dataDir = filepath.Join(os.Getenv("LOCALAPPDATA"), "AmbientMusicDashboard")
@@ -73,12 +103,28 @@ var artCache struct {
 	sync.RWMutex
 	videoID  string
 	loading  string
+	failedID string
+	failedAt time.Time
 	data     []byte
 	typeMIME string
 }
 var volumeState struct {
 	sync.Mutex
 	previous float64
+}
+var playbackDuration struct {
+	sync.RWMutex
+	seconds float64
+}
+var optimisticSeek struct {
+	sync.Mutex
+	progress float64
+	expires  time.Time
+}
+var lastSkinState struct {
+	sync.RWMutex
+	value skinSnapshot
+	valid bool
 }
 var volumeCommandMu sync.Mutex
 var volumeDrag struct {
@@ -138,18 +184,70 @@ func seekToPercent(percent float64) (*http.Response, error) {
 	if percent > 100 {
 		percent = 100
 	}
-	resp, err := api("/track/state", "GET", "")
-	if err != nil {
-		return nil, err
+	playbackDuration.RLock()
+	duration := playbackDuration.seconds
+	playbackDuration.RUnlock()
+	if duration <= 0 {
+		resp, err := api("/track/state", "GET", "")
+		if err != nil {
+			return nil, err
+		}
+		var playback playbackInfo
+		body := readBody(resp)
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 || json.Unmarshal(body, &playback) != nil || playback.Duration <= 0 {
+			return nil, fmt.Errorf("track duration is unavailable")
+		}
+		duration = playback.Duration
+		playbackDuration.Lock()
+		playbackDuration.seconds = duration
+		playbackDuration.Unlock()
 	}
-	var playback playbackInfo
-	body := readBody(resp)
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || json.Unmarshal(body, &playback) != nil || playback.Duration <= 0 {
-		return nil, fmt.Errorf("track duration is unavailable")
-	}
-	targetMilliseconds := playback.Duration * percent * 10
+	targetMilliseconds := duration * percent * 10
 	payload, _ := json.Marshal(map[string]any{"time": targetMilliseconds, "type": "seek"})
 	return api("/track/seek", "POST", string(payload))
+}
+
+func seekOptimistically(percent float64) error {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	playbackDuration.RLock()
+	duration := playbackDuration.seconds
+	playbackDuration.RUnlock()
+	if duration <= 0 {
+		return fmt.Errorf("track duration is unavailable")
+	}
+	target := duration * percent / 100
+	optimisticSeek.Lock()
+	optimisticSeek.progress = target
+	optimisticSeek.expires = time.Now().Add(5 * time.Second)
+	optimisticSeek.Unlock()
+
+	go func() {
+		targetMilliseconds := target * 1000
+		payload, _ := json.Marshal(map[string]any{"time": targetMilliseconds, "type": "seek"})
+		resp, err := api("/track/seek", "POST", string(payload))
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				optimisticSeek.Lock()
+				if optimisticSeek.progress == target {
+					optimisticSeek.expires = time.Now().Add(1200 * time.Millisecond)
+				}
+				optimisticSeek.Unlock()
+				return
+			}
+		}
+		optimisticSeek.Lock()
+		if optimisticSeek.progress == target {
+			optimisticSeek.expires = time.Time{}
+		}
+		optimisticSeek.Unlock()
+	}()
+	return nil
 }
 
 func env(k, fallback string) string {
@@ -159,6 +257,14 @@ func env(k, fallback string) string {
 	return fallback
 }
 func api(path, method, body string) (*http.Response, error) {
+	req, err := apiRequest(path, method, body)
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
+func apiRequest(path, method, body string) (*http.Request, error) {
 	var r io.Reader
 	if body != "" {
 		r = strings.NewReader(body)
@@ -173,7 +279,7 @@ func api(path, method, body string) (*http.Response, error) {
 	if token, err := os.ReadFile(filepath.Join(dataDir, "token")); err == nil {
 		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
 	}
-	return client.Do(req)
+	return req, nil
 }
 func readBody(r *http.Response) json.RawMessage {
 	defer r.Body.Close()
@@ -198,7 +304,7 @@ func formatTime(seconds float64) string {
 
 func cacheArtwork(videoID, fallbackURL string) string {
 	if videoID == "" {
-		return ""
+		return cachedArtworkURL()
 	}
 	artCache.Lock()
 	if artCache.videoID == videoID && len(artCache.data) > 0 {
@@ -206,10 +312,18 @@ func cacheArtwork(videoID, fallbackURL string) string {
 		return "http://127.0.0.1:38471/artwork.jpg?id=" + url.QueryEscape(videoID)
 	}
 	if artCache.loading == videoID {
+		previous := cachedArtworkURLLocked()
 		artCache.Unlock()
-		return "http://127.0.0.1:38471/artwork.jpg?id=" + url.QueryEscape(videoID)
+		return previous
 	}
+	if artCache.failedID == videoID && time.Since(artCache.failedAt) < 30*time.Second {
+		previous := cachedArtworkURLLocked()
+		artCache.Unlock()
+		return previous
+	}
+	previous := cachedArtworkURLLocked()
 	artCache.loading = videoID
+	artCache.failedID = ""
 	artCache.Unlock()
 	go func() {
 		var data []byte
@@ -232,18 +346,46 @@ func cacheArtwork(videoID, fallbackURL string) string {
 				resp.Body.Close()
 			}
 		}
+		if len(data) > 0 && !validCoverImage(data) {
+			data = nil
+		}
 		artCache.Lock()
+		cached := false
 		if artCache.loading == videoID {
 			artCache.loading = ""
 			if len(data) > 0 {
 				artCache.videoID, artCache.data, artCache.typeMIME = videoID, data, mimeType
+				artCache.failedID = ""
+				cached = true
+			} else {
+				artCache.failedID = videoID
+				artCache.failedAt = time.Now()
 			}
 		}
 		artCache.Unlock()
+		if cached {
+			publishCoverBackground(videoID, data)
+		} else {
+			failBackgroundTrack(videoID)
+		}
 	}()
-	// Return the local URL immediately; the image is fetched in the background.
-	// Rainmeter's next state refresh will pick it up once the cache is ready.
-	return "http://127.0.0.1:38471/artwork.jpg?id=" + url.QueryEscape(videoID)
+	// Publish the URL only after the local cache is ready so a missing cover
+	// never makes Rainmeter request a file that is not there yet.
+	return previous
+}
+
+func cachedArtworkURL() string {
+	artCache.RLock()
+	defer artCache.RUnlock()
+	return cachedArtworkURLLocked()
+}
+
+// The caller must hold at least a read lock on artCache.
+func cachedArtworkURLLocked() string {
+	if artCache.videoID == "" || len(artCache.data) == 0 {
+		return ""
+	}
+	return "http://127.0.0.1:38471/artwork.jpg?id=" + url.QueryEscape(artCache.videoID)
 }
 
 func artwork(w http.ResponseWriter, r *http.Request) {
@@ -263,16 +405,29 @@ func artwork(w http.ResponseWriter, r *http.Request) {
 }
 
 func state(w http.ResponseWriter, _ *http.Request) {
-	result := skinSnapshot{Connected: false, Title: "YTMDesktop2 unavailable", Author: "Start YTMDesktop2 to listen", Position: "0:00 / 0:00"}
+	snapshot := collectSkinState()
+	fullscreenCurrent.Lock()
+	fullscreenCurrent.snapshot = snapshot
+	fullscreenCurrent.Unlock()
+	write(w, snapshot)
+}
+
+func collectSkinState() skinSnapshot {
+	if snapshot, ok := optimisticStateSnapshot(); ok {
+		return snapshot
+	}
+	result := skinSnapshot{Connected: false, Title: "YTMDesktop2 unavailable", Author: "Start YTMDesktop2 to listen", Position: "0:00 / 0:00", Elapsed: "0:00", Total: "0:00", Thumbnail: cachedArtworkURL()}
 	tr, err := api("/track", "GET", "")
 	if err != nil {
-		write(w, result)
-		return
+		selectBackgroundTrack("", false)
+		result.BackgroundFile = backgroundFileName()
+		return result
 	}
 	trackBytes := readBody(tr)
 	if tr.StatusCode < 200 || tr.StatusCode >= 300 {
-		write(w, result)
-		return
+		selectBackgroundTrack("", false)
+		result.BackgroundFile = backgroundFileName()
+		return result
 	}
 	result.Connected = true
 	result.Title = "Nothing playing"
@@ -290,7 +445,16 @@ func state(w http.ResponseWriter, _ *http.Request) {
 		if videoID == "" {
 			videoID = track.Video.VideoID
 		}
+		result.trackID = videoID
+		result.artCandidates = append(result.artCandidates, track.Video.Thumbnail.Thumbnails...)
+		if track.Meta.Thumbnail != "" {
+			result.artCandidates = append(result.artCandidates, trackThumbnail{URL: track.Meta.Thumbnail})
+		}
+		selectBackgroundTrack(videoID, videoID != "")
 		result.Thumbnail = cacheArtwork(videoID, art)
+	} else {
+		selectBackgroundTrack("", false)
+		result.Thumbnail = cachedArtworkURL()
 	}
 	type stateResult struct {
 		playback playbackInfo
@@ -320,6 +484,24 @@ func state(w http.ResponseWriter, _ *http.Request) {
 	playbackResult, volumeResult := <-stateCh, <-volumeCh
 	if playbackResult.err == nil {
 		playback := playbackResult.playback
+		playbackDuration.Lock()
+		playbackDuration.seconds = playback.Duration
+		playbackDuration.Unlock()
+		optimisticSeek.Lock()
+		if optimisticSeek.expires.After(time.Now()) {
+			target := optimisticSeek.progress
+			if playback.Progress >= target-3 && playback.Progress <= target+3 {
+				optimisticSeek.expires = time.Time{}
+			} else {
+				playback.Progress = target
+				if playback.Duration > 0 {
+					playback.Percentage = target / playback.Duration * 100
+				}
+			}
+		} else {
+			optimisticSeek.expires = time.Time{}
+		}
+		optimisticSeek.Unlock()
 		result.Playing = playback.Playing
 		result.Progress = playback.Progress
 		result.Duration = playback.Duration
@@ -327,6 +509,8 @@ func state(w http.ResponseWriter, _ *http.Request) {
 		result.Shuffle = playback.Shuffle
 		result.Repeat = playback.Loop
 		result.Position = formatTime(playback.Progress) + " / " + formatTime(playback.Duration)
+		result.Elapsed = formatTime(playback.Progress)
+		result.Total = formatTime(playback.Duration)
 	}
 	if volumeResult.err == nil {
 		result.Volume = volumeResult.volume
@@ -337,15 +521,65 @@ func state(w http.ResponseWriter, _ *http.Request) {
 			volumeState.Unlock()
 		}
 	}
-	write(w, result)
+	result.BackgroundFile = backgroundFileName()
+	lastSkinState.Lock()
+	lastSkinState.value = result
+	lastSkinState.valid = true
+	lastSkinState.Unlock()
+	return result
+}
+
+func optimisticStateSnapshot() (skinSnapshot, bool) {
+	optimisticSeek.Lock()
+	pending := optimisticSeek.expires.After(time.Now())
+	target := optimisticSeek.progress
+	if !pending {
+		optimisticSeek.expires = time.Time{}
+	}
+	optimisticSeek.Unlock()
+	if !pending {
+		return skinSnapshot{}, false
+	}
+	lastSkinState.RLock()
+	snapshot, valid := lastSkinState.value, lastSkinState.valid
+	lastSkinState.RUnlock()
+	if !valid {
+		return skinSnapshot{}, false
+	}
+	snapshot.Progress = target
+	if snapshot.Duration > 0 {
+		snapshot.Percentage = target / snapshot.Duration * 100
+	}
+	snapshot.Position = formatTime(target) + " / " + formatTime(snapshot.Duration)
+	snapshot.Elapsed = formatTime(target)
+	snapshot.Total = formatTime(snapshot.Duration)
+	return snapshot, true
 }
 func main() {
+	if handleFontCommand(os.Args[1:]) {
+		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "import-playlists" {
+		if len(os.Args) != 4 {
+			log.Fatal("usage: import-playlists <Google desktop client JSON> <installed playlists.json>")
+		}
+		if err := importPlaylists(os.Args[2], os.Args[3]); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	go volumeCommandWorker()
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
 		log.Fatal(err)
 	}
+	initializeCoverBackground()
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /queue/view", queueView)
+	mux.HandleFunc("POST /queue/play", queuePlay)
+	mux.HandleFunc("POST /bookmarks/{action}", bookmarkAction)
 	mux.HandleFunc("GET /state", state)
+	mux.HandleFunc("GET /fullscreen/state", fullscreenState)
+	mux.HandleFunc("GET /fullscreen/pointer", fullscreenPointer)
 	mux.HandleFunc("GET /artwork", artwork)
 	mux.HandleFunc("GET /artwork.jpg", artwork)
 	mux.HandleFunc("POST /seek", func(w http.ResponseWriter, r *http.Request) {
@@ -387,14 +621,11 @@ func main() {
 			return
 		}
 		stopSeekDrag()
-		result, err := seekToPercent(percent)
-		if err != nil {
+		if err := seekOptimistically(percent); err != nil {
 			http.Error(w, err.Error(), 502)
 			return
 		}
-		defer result.Body.Close()
-		w.WriteHeader(result.StatusCode)
-		_, _ = io.Copy(w, result.Body)
+		w.WriteHeader(http.StatusAccepted)
 	})
 	mux.HandleFunc("POST /volume", func(w http.ResponseWriter, r *http.Request) {
 		percent, err := strconv.ParseFloat(r.URL.Query().Get("percent"), 64)
@@ -491,6 +722,35 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(b)
 	})
+	mux.HandleFunc("GET /playlists/labels", func(w http.ResponseWriter, _ *http.Request) {
+		exe, err := os.Executable()
+		if err != nil {
+			http.Error(w, "cannot locate playlist settings", http.StatusInternalServerError)
+			return
+		}
+		data, err := os.ReadFile(filepath.Join(filepath.Dir(exe), "playlists.json"))
+		var settings config
+		if err != nil || json.Unmarshal(data, &settings) != nil {
+			http.Error(w, "cannot read playlist settings", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		var configured [playlistSlots]byte
+		for i := range configured {
+			label := "-"
+			configured[i] = '0'
+			if i < len(settings.Playlists) && playlistID(settings.Playlists[i].ID) != "" {
+				label = strings.Join(strings.Fields(settings.Playlists[i].Name), " ")
+				if label == "" {
+					label = fmt.Sprintf("Playlist %d", i+1)
+				}
+				configured[i] = '1'
+			}
+			fmt.Fprintln(w, label)
+		}
+		fmt.Fprintln(w, string(configured[:]))
+	})
 	mux.HandleFunc("POST /{cmd}", func(w http.ResponseWriter, r *http.Request) {
 		cmd := r.PathValue("cmd")
 		routes := map[string]string{"toggle": "/track/toggle-play-state", "next": "/track/next", "prev": "/track/prev", "shuffle": "/track/shuffle", "repeat": "/track/repeat", "volup": "/track/volume-up", "voldown": "/track/volume-down", "forward": "/track/forward", "backward": "/track/backward"}
@@ -559,12 +819,12 @@ func main() {
 			http.Error(w, "playlist index out of range", 404)
 			return
 		}
-		p := c.Playlists[idx]
-		if p.ID == "" || strings.HasPrefix(p.ID, "REPLACE_") {
-			http.Error(w, "configure playlist ID first", 400)
+		id := playlistID(c.Playlists[idx].ID)
+		if id == "" {
+			http.Error(w, "configure a YouTube playlist ID or share URL first", 400)
 			return
 		}
-		payload, _ := json.Marshal(map[string]any{"playlistId": p.ID, "play": true})
+		payload, _ := json.Marshal(map[string]any{"playlistId": id, "play": true})
 		resp, err := api("/nav/playlist", "POST", string(payload))
 		if err != nil {
 			http.Error(w, err.Error(), 502)

@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	volumeMeterX      = 316.0
-	volumeMeterWidth  = 76.0
-	seekMeterX        = 108.0
-	seekMeterWidth    = 264.0
+	volumeMeterX      = 196.0
+	volumeMeterWidth  = 64.0
+	seekMeterX        = 203.0
+	seekMeterWidth    = 246.0
 	skinLogicalWidth  = 520.0
 	leftMouseButton   = 0x01
 	leftButtonPressed = 0x8000
@@ -31,6 +31,13 @@ var getWindowRectProc = user32.NewProc("GetWindowRect")
 var getCursorPosProc = user32.NewProc("GetCursorPos")
 var getAsyncKeyStateProc = user32.NewProc("GetAsyncKeyState")
 
+func isPlayerSkinWindow(title string) bool {
+	title = strings.ToLower(title)
+	return strings.HasSuffix(title, `\youtube music desktop player\youtube music desktop player.ini`) ||
+		strings.HasSuffix(title, `\youtube music desktop player\ambientmusic.ini`) ||
+		strings.HasSuffix(title, `\ambientmusic\ambientmusic.ini`)
+}
+
 func ambientSkinRect() (windowRect, error) {
 	var found windowRect
 	callback := syscall.NewCallback(func(hwnd, _ uintptr) uintptr {
@@ -41,7 +48,7 @@ func ambientSkinRect() (windowRect, error) {
 		}
 		title := make([]uint16, 1024)
 		titleLen, _, _ := getWindowTextProc.Call(hwnd, uintptr(unsafe.Pointer(&title[0])), uintptr(len(title)))
-		if titleLen == 0 || !strings.HasSuffix(strings.ToLower(syscall.UTF16ToString(title)), `\ambientmusic\ambientmusic.ini`) {
+		if titleLen == 0 || !isPlayerSkinWindow(syscall.UTF16ToString(title)) {
 			return 1
 		}
 		_, _, _ = getWindowRectProc.Call(hwnd, uintptr(unsafe.Pointer(&found)))
@@ -49,7 +56,7 @@ func ambientSkinRect() (windowRect, error) {
 	})
 	enumWindowsProc.Call(callback, 0)
 	if found.Right <= found.Left {
-		return windowRect{}, fmt.Errorf("AmbientMusic Rainmeter window was not found")
+		return windowRect{}, fmt.Errorf("player Rainmeter window was not found")
 	}
 	return found, nil
 }
@@ -135,7 +142,7 @@ func watchSeekDrag(session uint64) {
 		}
 		var cursor struct{ X, Y int32 }
 		if result, _, _ := getCursorPosProc.Call(uintptr(unsafe.Pointer(&cursor))); result != 0 && width > 0 {
-			percent := math.Round((float64(cursor.X) - left) / width * 100)
+			percent := (float64(cursor.X) - left) / width * 100
 			if percent < 0 {
 				percent = 0
 			}
@@ -148,7 +155,7 @@ func watchSeekDrag(session uint64) {
 			}
 			seekDrag.Unlock()
 		}
-		time.Sleep(25 * time.Millisecond)
+		time.Sleep(12 * time.Millisecond)
 	}
 }
 
