@@ -1,7 +1,7 @@
 -- Shared single-line title marquee. Text is measured at its natural width and
 -- clipped by a fixed container, so scrolling never changes the skin's size.
 local meterName, sourceName, containerName
-local lastText, lastWidth, lastViewport, lastTick
+local lastText, lastWidth, lastViewport, lastTick, lastPixel
 local offset, elapsed, phase = 0, 0, "start"
 
 function Initialize()
@@ -12,9 +12,13 @@ function Initialize()
 end
 
 local function position(value)
-    SKIN:Bang("!SetOption", meterName, "X", tostring(-value))
-    SKIN:Bang("!UpdateMeter", meterName)
-    SKIN:Bang("!Redraw")
+    local x = -math.floor(value + 0.5)
+    if x == lastPixel then return end
+    lastPixel = x
+    -- Move the cached text without rebuilding its font layout. Persist X for
+    -- explicit meter updates; the regular skin tick already redraws the view.
+    SKIN:GetMeter(meterName):SetX(x)
+    SKIN:Bang("!SetOption", meterName, "X", tostring(x))
 end
 
 local function reset()
@@ -34,6 +38,7 @@ function Update()
     local text = source:GetStringValue() or ""
     if text ~= lastText then
         lastText, lastWidth = text, nil
+        SKIN:Bang("!UpdateMeter", meterName)
         reset()
         -- Let Rainmeter render the new text before reading its natural width.
         return 0
