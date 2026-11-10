@@ -137,12 +137,20 @@ if (-not $RainmeterRoot -or -not (Test-Path (Join-Path $RainmeterRoot 'Rainmeter
 
 $skinTarget = Join-Path $RainmeterRoot 'Skins\AmbientMusic'
 $bridgeTarget = Join-Path $skinTarget '@Resources\Bridge'
+$obsoleteExpanded = Join-Path $skinTarget 'Expanded.ini'
+if (Test-Path -LiteralPath $obsoleteExpanded) { Remove-Item -LiteralPath $obsoleteExpanded -Force }
 New-Item -ItemType Directory -Force -Path $bridgeTarget | Out-Null
 Copy-Item -Path (Join-Path $skinSource '*') -Destination $skinTarget -Recurse -Force
 if (-not (Test-Path (Join-Path $bridgeTarget 'playlists.json'))) {
     Copy-Item -LiteralPath (Join-Path $bridgeSource 'playlists.json') -Destination (Join-Path $bridgeTarget 'playlists.json')
 }
 $bridgeExe = Join-Path $bridgeTarget 'AmbientMusicBridge.exe'
+$runningBridge = Get-CimInstance Win32_Process -Filter "Name = 'AmbientMusicBridge.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ExecutablePath -eq $bridgeExe }
+if ($runningBridge) {
+    Stop-Process -Id $runningBridge.ProcessId -Force
+    Start-Sleep -Milliseconds 500
+}
 Push-Location $bridgeSource
 try {
     & go build -trimpath -ldflags '-H=windowsgui' -o $bridgeExe .
