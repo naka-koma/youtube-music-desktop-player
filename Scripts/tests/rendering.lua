@@ -26,7 +26,7 @@ return function(root)
     performance.Select('balanced')
     assert(#calls==0, 'invalid or unchanged profile must not rewrite settings')
 
-    for _, case in ipairs({{'power',100,0,10}, {'smooth',15,1,67}, {'balanced',66,1,15}}) do
+    for _, case in ipairs({{'power',100,0,10}, {'smooth',30,1,33}, {'balanced',66,1,15}}) do
         mode, calls = 'other', {}
         performance.Select(case[1])
         local values = {}
@@ -54,8 +54,8 @@ return function(root)
     end
 
     local text, width, viewport, x = 'A long title', 0, 100, 0
-    local time, scroll, layoutUpdates, redrawRequests = 0, '1', 0, 0
-    local titleMeter = {GetW=function() return width end, SetX=function(_, value) x=value end}
+    local time, scroll, layoutUpdates, redrawRequests, scheduledDraws = 0, '1', 0, 0, 0
+    local titleMeter = {GetW=function() return width end, SetX=function() error('SetX alone does not invalidate an all-static skin') end}
     local marquee = loadIsolated('TitleMarquee.lua', {
         os={clock=function() time=time+0.1; return time end},
         SELF={
@@ -66,9 +66,13 @@ return function(root)
             GetVariable=function(_, key, default) return key=='RenderMarquee' and scroll or default end,
             GetMeter=function(_, key) return key=='title' and titleMeter or {GetW=function() return viewport end} end,
             GetMeasure=function() return {GetStringValue=function() return text end} end,
-            Bang=function(_, bang)
+            Bang=function(_, bang, a, b, target)
                 if bang=='!UpdateMeter' then layoutUpdates=layoutUpdates+1; width=#text*20 end
                 if bang=='!Redraw' then redrawRequests=redrawRequests+1 end
+                if bang=='!MoveMeter' then
+                    assert(target=='title' and b=='0', 'move the title within its viewport')
+                    x=tonumber(a);scheduledDraws=scheduledDraws+1
+                end
             end
         }
     })
@@ -85,6 +89,7 @@ return function(root)
         if reachedEnd and x==0 then restarted=true end
     end
     assert(reachedEnd and restarted, 'show the end and return to the start')
+    assert(scheduledDraws>20, 'scrolling must schedule draws even when every meter has UpdateDivider=-1')
     assert(layoutUpdates==1 and redrawRequests==0, 'reuse text layout and normal skin redraw')
     text='Short'; marquee.Update(); marquee.Update()
     for i=1,30 do marquee.Update() end

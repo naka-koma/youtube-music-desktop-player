@@ -15,10 +15,10 @@ local function position(value)
     local x = -math.floor(value + 0.5)
     if x == lastPixel then return end
     lastPixel = x
-    -- Move the cached text without rebuilding its font layout. Persist X for
-    -- explicit meter updates; the regular skin tick already redraws the view.
-    SKIN:GetMeter(meterName):SetX(x)
-    SKIN:Bang("!SetOption", meterName, "X", tostring(x))
+    -- MoveMeter preserves the cached text layout AND invalidates the skin.
+    -- SetX alone changes coordinates without scheduling a draw when every
+    -- fullscreen meter has UpdateDivider=-1 (unlike the compact view).
+    SKIN:Bang("!MoveMeter", tostring(x), "0", meterName)
 end
 
 local function reset()

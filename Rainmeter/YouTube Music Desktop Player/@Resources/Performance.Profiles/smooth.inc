@@ -1,9 +1,9 @@
 [Variables]
-; Target ~60 fps; 15 ms gave a steadier timer cadence on the tested system.
-RenderInterval=15
+; Target ~30 fps. The marquee must invalidate drawing, not just move in Lua.
+RenderInterval=30
 RenderMarquee=1
-RenderStateRate=67
-RenderFSStateRate=44
-RenderPointerRate=2
-RenderQueueRate=200
-RenderPlaylistRate=2000
+RenderStateRate=33
+RenderFSStateRate=22
+RenderPointerRate=1
+RenderQueueRate=100
+RenderPlaylistRate=1000
