@@ -38,5 +38,6 @@
 - `Scripts/tests/rendering.lua` は Lua 5.1 用の回帰テスト。`dofile('.../Scripts/tests/rendering.lua')('.../リポジトリのルート')` で実行でき、Rainmeter の Lua からも呼び出せる。
 - `Scripts/tests/fullscreen.lua` では部分更新、背景到着時の更新、不要な再描画の抑止、シーク後の閉じる判定を確認する。同じ方法で実行できる。
 - CPU 比較は同じ表示モード・曲・測定時間で行う。Rainmeter 全体の値には他のスキンも含まれるため、単発の数値から改善率を断定しない。
+- 滑らかさの確認では平均fpsだけでなく、フレーム間隔の分布・最大停止時間・マウス位置の取得周期も確認する。Smooth の目標は約60fps。描画だけを速めて入力取得が約100msのままにならないようにする。
 - `git diff --check` を実行し、実際に確認できた結果と未再現の問題を区別して報告する。
 - 配置には `pwsh -NoProfile -File scripts/Install-PlayerSkin.ps1 -RainmeterRoot '<Rainmeter のフォルダー>'` を使用できる。個人設定を保ち、確認後に表示先やモードを元に戻す。

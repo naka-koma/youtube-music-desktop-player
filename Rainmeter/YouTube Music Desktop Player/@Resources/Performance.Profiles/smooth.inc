@@ -1,9 +1,9 @@
 [Variables]
-; 30 ms avoids the slower timer cadence observed with 33 ms on Windows.
-RenderInterval=30
+; Target ~60 fps; 15 ms gave a steadier timer cadence on the tested system.
+RenderInterval=15
 RenderMarquee=1
-RenderStateRate=33
-RenderFSStateRate=22
-RenderPointerRate=3
-RenderQueueRate=100
-RenderPlaylistRate=1000
+RenderStateRate=67
+RenderFSStateRate=44
+RenderPointerRate=2
+RenderQueueRate=200
+RenderPlaylistRate=2000

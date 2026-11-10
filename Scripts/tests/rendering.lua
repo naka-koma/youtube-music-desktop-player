@@ -26,7 +26,7 @@ return function(root)
     performance.Select('balanced')
     assert(#calls==0, 'invalid or unchanged profile must not rewrite settings')
 
-    for _, case in ipairs({{'power',100,0,10}, {'smooth',30,1,33}, {'balanced',66,1,15}}) do
+    for _, case in ipairs({{'power',100,0,10}, {'smooth',15,1,67}, {'balanced',66,1,15}}) do
         mode, calls = 'other', {}
         performance.Select(case[1])
         local values = {}
@@ -46,6 +46,10 @@ return function(root)
         assert(timing.RenderMarquee==case[3], 'profile scrolling policy')
         assert(timing.RenderStateRate==case[4], 'keep playback polling near one second')
         assert(math.abs(timing.RenderStateRate*timing.RenderInterval-1000)<100, 'polling duration')
+        assert(math.abs(timing.RenderFSStateRate*timing.RenderInterval-660)<100, 'fullscreen polling must not accelerate with rendering')
+        if case[1]=='smooth' then
+            assert(timing.RenderPointerRate*timing.RenderInterval<=33, 'Smooth pointer sampling must not add 90ms of input lag')
+        end
         assert(calls[#calls][1]=='!RefreshGroup' and calls[#calls][2]=='YouTubeMusicPlayer', 'refresh loaded player views after all writes')
     end
 
