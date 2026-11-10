@@ -36,7 +36,7 @@ Click the queue icon beside `⋯` to open the current YTMDesktop2 queue below th
 
 ### Fullscreen view
 
-Double-click the album cover or click its expand icon to open the desktop fullscreen skin. The regular panel is hidden while fullscreen is open and returns in place when you click the fullscreen background. Move the pointer to show the fullscreen controls. The title uses a fixed font size. In both views, long titles scroll horizontally, pause at each end, and restart from the beginning when the track changes. Titles that fit stay still. You can also return to the panel with **Exit fullscreen** in the right-click menu.
+Double-click the album cover or click its expand icon to open the desktop fullscreen skin. The regular panel is hidden while fullscreen is open and returns in place when you click the fullscreen background. Move the pointer to show the fullscreen controls. The title uses a fixed font size. In Balanced and Smooth modes, long titles in both views scroll horizontally, pause at each end, and restart from the beginning when the track changes. Titles that fit stay still. You can also return to the panel with **Exit fullscreen** in the right-click menu.
 
 Fullscreen opens on monitor 2 by default. Choose **Move to next monitor** in its right-click menu to change and save the target display. You can also edit `FullscreenMonitor` in `@Resources\Fullscreen.Settings.inc` and refresh the fullscreen skin. This setting takes precedence over coordinates in Rainmeter Manage. Fullscreen fetches playback independently of the compact panel.
 
@@ -76,6 +76,20 @@ The quick slots in the More menu still read the first four entries in the instal
 The importer lists playlists owned by the authorized YouTube channel. It uses read-only access and keeps the Google access token in memory for that run. Playlists saved from other creators can still be added manually by ID. [YouTube playlist listing](https://developers.google.com/youtube/data/reference/rest/v3/playlists/list)
 
 ## Display settings
+
+### Rendering performance
+
+Right-click either view and choose a mode. The active option is marked `(selected)`.
+
+| Mode | Rendering rate | Long titles |
+| --- | --- | --- |
+| `Power Saver` | 10fps | Static |
+| `Balanced` (default) | About 15fps | Scroll horizontally |
+| `Smooth` | About 30fps | Scroll horizontally |
+
+The selection applies to both views and persists across restarts. Playback information still refreshes roughly once per second, and playback controls remain available in every mode. CPU usage also depends on resolution, backgrounds, and other skins.
+
+The menu saves the selection in `@Resources\Performance.Settings.inc`. Setup preserves this personal settings file.
 
 ### Fullscreen settings
 

@@ -50,7 +50,7 @@ function Update()
         return 0
     end
     local overflow = width - available
-    if available <= 0 or overflow <= 1 then return 0 end
+    if available <= 0 or overflow <= 1 or SKIN:GetVariable("RenderMarquee", "1") == "0" then return 0 end
     local pause = math.max(0, SELF:GetNumberOption("PauseSeconds", 1.8))
     elapsed = elapsed + step
     if phase == "start" then

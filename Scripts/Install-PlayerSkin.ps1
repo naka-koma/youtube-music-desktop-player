@@ -87,7 +87,7 @@ try {
         Move-Item -LiteralPath (Join-Path $target 'AmbientMusic.ini') -Destination (Join-Path $target $skinFile)
     }
 
-    $personalFiles = '@Resources\Fonts.User.inc', '@Resources\Fullscreen.Settings.inc', '@Resources\Backgrounds\Custom.inc'
+    $personalFiles = '@Resources\Fonts.User.inc', '@Resources\Fullscreen.Settings.inc', '@Resources\Performance.Settings.inc', '@Resources\Backgrounds\Custom.inc'
     foreach ($file in (Get-ChildItem -LiteralPath $skinSource -Recurse -File)) {
         $relative = $file.FullName.Substring($skinSource.Length + 1)
         if ($relative -in $personalFiles) { continue }
@@ -99,6 +99,10 @@ try {
     $fullscreenSettings = Join-Path $resources 'Fullscreen.Settings.inc'
     if (-not (Test-Path -LiteralPath $fullscreenSettings)) {
         Copy-Item -LiteralPath (Join-Path $resources 'Fullscreen.Settings.example.inc') -Destination $fullscreenSettings
+    }
+    $performanceSettings = Join-Path $resources 'Performance.Settings.inc'
+    if (-not (Test-Path -LiteralPath $performanceSettings)) {
+        Copy-Item -LiteralPath (Join-Path $resources 'Performance.Settings.example.inc') -Destination $performanceSettings
     }
     $fontSettings = Join-Path $resources 'Fonts.User.inc'
     if (-not (Test-Path -LiteralPath $fontSettings)) {
