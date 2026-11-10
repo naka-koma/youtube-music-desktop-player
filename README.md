@@ -79,7 +79,7 @@ The importer lists playlists owned by the authorized YouTube channel. It uses re
 
 ### Rendering performance
 
-Right-click either view and choose a mode. The active option is marked `(selected)`.
+Right-click either view and choose a mode. The active option is marked `(selected)`. Both views show the modes directly. In fullscreen, open **Rainmeter menu** at the bottom for standard Rainmeter settings such as window position.
 
 | Mode | Rendering rate | Long titles |
 | --- | --- | --- |
