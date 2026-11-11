@@ -3,7 +3,6 @@ name: Windows build and release
 on:
   pull_request:
   push:
-    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 

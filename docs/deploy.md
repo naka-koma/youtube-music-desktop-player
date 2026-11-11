@@ -1,6 +1,6 @@
 # リリース手順
 
-`main` へのプッシュやプルリクエストで Windows ビルドとテストが走ります。配布ZIPと `SHA256SUMS.txt` は、GitHub Actions の実行結果にある `windows-x64` アーティファクトから取得できます。
+プルリクエスト、`v` で始まるタグのプッシュ、または GitHub Actions の手動実行で Windows ビルドとテストが走ります。配布ZIPと `SHA256SUMS.txt` は、実行結果にある `windows-x64` アーティファクトから取得できます。
 
 ## GitHub Release の公開
 
