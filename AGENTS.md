@@ -15,6 +15,7 @@
 - 既存の Rainmeter ファイルは UTF-16 LE が中心。文字コードと改行を保ち、ファイル全体を不要に変換しない。新規の ASCII Lua は UTF-8 でもよい。
 - `Fonts.User.inc`、`Fullscreen.Settings.inc`、`Performance.Settings.inc`、`Backgrounds/Custom.inc` は個人設定。インストール時に保持し、Git に追加しない。
 - 認証トークン、OAuth クライアント JSON、生成された EXE、キャッシュ画像、ブックマークの実データをコミットしない。
+- 生成するぼかし背景・全画面画像はユーザーのTEMP内の `YouTubeMusicDesktopPlayer/artwork` に置く。Goの `artworkCacheDirectory` とLuaの `Components/CachePaths.lua` の保存先を一致させ、スキンやEXEのフォルダーへ書き戻さない。削除されたキャッシュは再生成し、移行時の削除は既知の生成ファイル名だけに限定する。
 - UI のメニューは英語。利用者向けの変更は `README.md` と `README.ja.md` の両方に反映する。
 
 ## 描画と操作

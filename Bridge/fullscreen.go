@@ -64,10 +64,17 @@ func fullscreenState(w http.ResponseWriter, r *http.Request) {
 		}
 		if r.URL.Query().Get("art") == "1" {
 			art = fullscreenCache.art
+			missingArt := art.original != "" && !art.exists(artworkCacheDirectory())
 			if fullscreenCache.artLoading == "" && (fullscreenCache.artID != id ||
+				missingArt ||
 				(art.original == "" && now.Sub(fullscreenCache.artCheck) > 10*time.Second)) {
 				fullscreenCache.artLoading = id
 				go updateFullscreenArt(id, snapshot.artCandidates)
+			}
+			// Publish a blank state while rebuilding. Reusing a missing filename
+			// would leave a freshly loaded skin with a stale failed image layout.
+			if missingArt {
+				art = fullscreenArtPair{}
 			}
 		}
 	}
@@ -164,9 +171,8 @@ func updateFullscreenArt(id string, candidates []trackThumbnail) {
 	}
 	artCache.RUnlock()
 	var art fullscreenArtPair
-	exe, err := os.Executable()
-	dir := filepath.Dir(exe)
-	if err == nil && area > 0 {
+	dir := artworkCacheDirectory()
+	if area > 0 {
 		art, _ = saveFullscreenArtPair(dir, best)
 	}
 	fullscreenCache.Lock()
@@ -174,7 +180,7 @@ func updateFullscreenArt(id string, candidates []trackThumbnail) {
 	fullscreenCache.artLoading, fullscreenCache.artID, fullscreenCache.art = "", id, art
 	fullscreenCache.artCheck = time.Now()
 	fullscreenCache.Unlock()
-	if err == nil && old.original != "" && old.original != art.original {
+	if old.original != "" && old.original != art.original {
 		_ = os.Remove(filepath.Join(dir, old.original))
 		_ = os.Remove(filepath.Join(dir, old.blur))
 	}
@@ -183,6 +189,11 @@ func updateFullscreenArt(id string, candidates []trackThumbnail) {
 type fullscreenArtPair struct {
 	original, blur string
 	width, height  int
+}
+
+func (pair fullscreenArtPair) exists(dir string) bool {
+	return pair.original != "" && pair.blur != "" &&
+		cacheFileExists(filepath.Join(dir, pair.original)) && cacheFileExists(filepath.Join(dir, pair.blur))
 }
 
 func saveFullscreenArtPair(dir string, data []byte) (fullscreenArtPair, error) {

@@ -82,6 +82,12 @@ YouTube Music のプレイリスト URL をコピーし、**⋯ → Playlists �
 
 ## 表示設定
 
+### アートワークのキャッシュ
+
+ぼかし背景と全画面用アートワークは、ユーザーのTEMP配下の `YouTubeMusicDesktopPlayer\artwork` に保存します。通常は `%TEMP%\YouTubeMusicDesktopPlayer\artwork` です。スキンの `@Resources\Bridge` には生成しません。
+
+このフォルダーは削除して構いません。表示に必要な画像は再生成します。旧バージョンが `@Resources\Bridge` に生成した画像は、ブリッジの起動時にファイル名を限定して削除します。カスタム画像・設定・登録済みプレイリストは削除しません。
+
 ### 描画負荷
 
 通常表示・全画面表示の右クリックメニューから選べます。現在のモードには `(selected)` が付きます。両方の表示で共通のメニューが直接開き、描画モードとその他の操作は区切り線で分かれています。最前面などの Rainmeter 標準設定は、メニュー末尾の「Rainmeter menu」から開けます。

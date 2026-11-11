@@ -1,6 +1,14 @@
 -- Lua 5.1 / Rainmeter: dofile('.../Scripts/tests/components.lua')('.../repo')
 return function(root)
     local components=root .. '/Rainmeter/YouTube Music Desktop Player/@Resources/Components/'
+    local cachePath=dofile(components .. 'CachePaths.lua')
+    local env={TMP='C:\\User Temp\\',TEMP='C:\\Other Temp'}
+    assert(cachePath(function(key) return env[key] end)=='C:\\User Temp\\YouTubeMusicDesktopPlayer\\artwork\\', 'cache must match Windows TMP precedence')
+    env.TMP=''
+    assert(cachePath(function(key) return env[key] end)=='C:\\Other Temp\\YouTubeMusicDesktopPlayer\\artwork\\', 'fall back to TEMP when TMP is empty')
+    env={USERPROFILE='C:\\User'}
+    assert(cachePath(function(key) return env[key] end)=='C:\\User\\YouTubeMusicDesktopPlayer\\artwork\\', 'profile fallback must match Windows')
+    assert(not pcall(cachePath,function() return nil end), 'do not create a relative cache path when the environment is missing')
     local newMarquee=dofile(components .. 'Marquee.lua')
     local function travel(step,frames)
         local marquee=newMarquee()

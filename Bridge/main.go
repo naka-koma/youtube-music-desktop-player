@@ -569,6 +569,13 @@ func main() {
 		log.Fatal(err)
 	}
 	initializeCoverBackground()
+	if cacheFileExists(filepath.Join(artworkCacheDirectory(), "cover_blur_fallback.png")) {
+		if exe, err := os.Executable(); err == nil {
+			if err := cleanupLegacyArtwork(filepath.Dir(exe)); err != nil {
+				log.Printf("legacy artwork cleanup: %v", err)
+			}
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /queue/view", queueView)
 	mux.HandleFunc("POST /queue/play", queuePlay)

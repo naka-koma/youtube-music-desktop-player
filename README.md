@@ -77,6 +77,12 @@ The importer lists playlists owned by the authorized YouTube channel. It uses re
 
 ## Display settings
 
+### Artwork cache
+
+Generated blurred backgrounds and fullscreen artwork are stored under the current user's temporary directory, normally `%TEMP%\YouTubeMusicDesktopPlayer\artwork`, rather than `@Resources\Bridge`.
+
+You can delete this cache folder; required images are regenerated. On startup, the bridge removes only recognized generated artwork files left in `@Resources\Bridge` by older versions. Custom images, settings, and saved playlists are preserved.
+
 ### Rendering performance
 
 Right-click either view and choose a mode. The active option is marked `(selected)`. Both views use the same direct menu, with separators between rendering modes and other actions. Open **Rainmeter menu** at the bottom for standard Rainmeter settings such as window position.

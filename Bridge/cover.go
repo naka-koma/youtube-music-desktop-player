@@ -35,12 +35,7 @@ var coverBackground struct {
 }
 
 func initializeCoverBackground() {
-	exe, err := os.Executable()
-	if err != nil {
-		log.Printf("cover background: locate executable: %v", err)
-		return
-	}
-	dir := filepath.Dir(exe)
+	dir := artworkCacheDirectory()
 	fallback := roundedFallback()
 	if err := savePNGAtomic(filepath.Join(dir, "cover_blur.png"), fallback); err != nil {
 		log.Printf("cover background: initialize fallback: %v", err)
@@ -59,11 +54,32 @@ func initializeCoverBackground() {
 func backgroundFileName() string {
 	coverBackground.RLock()
 	name := coverBackground.fileName
+	dir := coverBackground.directory
 	coverBackground.RUnlock()
 	if name == "" {
-		return "cover_blur_fallback.png"
+		name = "cover_blur_fallback.png"
 	}
-	return name
+	if dir == "" {
+		return name
+	}
+	if cacheFileExists(filepath.Join(dir, name)) {
+		return name
+	}
+	// TEMP can be emptied while the bridge is running. Rebuild from the in-memory
+	// artwork rather than leaving an unchanged filename pointing at a missing file.
+	artCache.RLock()
+	id, data := artCache.videoID, artCache.data
+	artCache.RUnlock()
+	if len(data) > 0 && name != "cover_blur_fallback.png" {
+		publishCoverBackground(id, data)
+		if cacheFileExists(filepath.Join(dir, name)) {
+			return name
+		}
+	}
+	if err := savePNGAtomic(filepath.Join(dir, "cover_blur_fallback.png"), roundedFallback()); err != nil {
+		log.Printf("cover background: recreate fallback: %v", err)
+	}
+	return "cover_blur_fallback.png"
 }
 
 func selectBackgroundTrack(trackID string, hasArtwork bool) {
@@ -91,8 +107,9 @@ func publishCoverBackground(trackID string, source []byte) {
 	name := "cover_blur_" + hex.EncodeToString(contentKey[:8]) + ".png"
 	coverBackground.RLock()
 	unchanged := coverBackground.trackKey == trackID && coverBackground.directory != "" && coverBackground.sourceHash == contentHash && coverBackground.fileName == name
+	dir := coverBackground.directory
 	coverBackground.RUnlock()
-	if unchanged {
+	if unchanged && cacheFileExists(filepath.Join(dir, name)) {
 		return
 	}
 	img, err := makeBlurredCover(source)
@@ -112,7 +129,7 @@ func publishCoverBackground(trackID string, source []byte) {
 	if coverBackground.trackKey != trackID || coverBackground.directory == "" {
 		return
 	}
-	if coverBackground.sourceHash == contentHash && coverBackground.fileName == name {
+	if coverBackground.sourceHash == contentHash && coverBackground.fileName == name && cacheFileExists(filepath.Join(coverBackground.directory, name)) {
 		return
 	}
 	data := encoded.Bytes()
@@ -169,6 +186,9 @@ func validCoverImage(data []byte) bool {
 func saveBytesAtomic(path string, data []byte) error {
 	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, data) {
 		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".cover-*.tmp")
 	if err != nil {

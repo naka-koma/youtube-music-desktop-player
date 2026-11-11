@@ -16,7 +16,7 @@ return function(root)
         return table.concat({title or '5449544c45','415254495354','',position or '303a3031','true','false',progress or '1','50',image or '',blur or '',w or '0',h or '0',''},'|')
     end
     local env={
-        os={clock=function() return time end},
+        os={clock=function() return time end,getenv=function(key) return key=='TMP' and 'C:\\User Temp' or nil end},
         SKIN={
             GetVariable=function(_,key,default) return values[key] or default end,
             GetMeasure=function(_,name)

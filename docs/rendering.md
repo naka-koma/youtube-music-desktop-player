@@ -8,6 +8,7 @@
 | --- | --- |
 | `Components/Marquee.lua` | 待機、移動、末尾での停止、先頭へのリセットを計算する。Rainmeter、時計、フォントに依存しない |
 | `Components/Renderer.lua` | Rainmeterへの描画操作をまとめる。座標の丸め、同じピクセルへの移動の省略、再描画要求を担当する |
+| `Components/CachePaths.lua` / `ArtworkCache.lua` | 生成画像のTEMP内の保存先を解決する。通常表示には文字列メジャーとして渡し、全画面では同じ部品を直接使う |
 | `TitleMarquee.lua` | 画面側との接続。曲名変更と実際の文字幅を検出し、経過秒数と表示幅をスクロール部品へ渡す |
 | `Fullscreen.lua` | 全画面の配置・入力・再生情報の差分判定。描画操作は `Renderer` に渡す |
 | `Performance.Profiles/*.inc` | モードごとの描画間隔、情報取得周期、スクロールの有効・無効を定義する |
@@ -36,6 +37,8 @@
 再生位置や時刻の更新で `FSContent` 全体を更新しない。背景、タイトル、アーティスト、時刻、操作ボタンは、それぞれ内容が変わった時だけ更新する。`Renderer` は毎フレームの `!Redraw` を追加しない。
 
 ## 確認すること
+
+生成画像の保存先は、Go側の `artworkCacheDirectory()` と `CachePaths.lua` で一致させる。ファイル名はAPIで返し、表示側でTEMP内のパスを組み立てる。キャッシュ削除後は再生成し、全画面は再生成が終わるまで存在しないファイル名を公開しない。
 
 - `Scripts/tests/components.lua`：純粋なスクロール計算と描画要求の契約。
 - `Scripts/tests/rendering.lua`：モード設定と、画面につないだスクロール動作。
