@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -21,22 +21,16 @@ type queueItem struct {
 }
 
 type queueSnapshot struct {
-	Items       []queueItem `json:"items"`
-	StoreHooked bool        `json:"storeHooked"`
+	Items           []queueItem `json:"items"`
+	StoreHooked     bool        `json:"storeHooked"`
+	CurrentPosition int         `json:"-"`
 }
 
 func readQueue() (queueSnapshot, error) {
-	var queue queueSnapshot
-	resp, err := api("/nav/queue", http.MethodGet, "")
-	if err != nil {
-		return queue, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return queue, fmt.Errorf("queue request returned HTTP %d", resp.StatusCode)
-	}
-	err = json.NewDecoder(resp.Body).Decode(&queue)
-	return queue, err
+	lastSkinState.RLock()
+	currentID := lastSkinState.value.trackID
+	lastSkinState.RUnlock()
+	return backend.Queue(currentID)
 }
 
 func uniqueQueuePosition(items []queueItem, videoID string) int {
@@ -59,55 +53,12 @@ func queuePlay(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid queue selection", http.StatusBadRequest)
 		return
 	}
-	queue, err := readQueue()
-	if err != nil {
-		http.Error(w, "queue unavailable", http.StatusBadGateway)
-		return
-	}
-	selected := -1
-	for i, item := range queue.Items {
-		if item.Index == index && item.VideoID == id {
-			selected = i
-			break
+	if err := backend.PlayQueue(index, id); err != nil {
+		status := http.StatusBadGateway
+		if errors.Is(err, errQueueChanged) {
+			status = http.StatusConflict
 		}
-	}
-	if selected < 0 {
-		http.Error(w, "queue changed; select the track again", http.StatusConflict)
-		return
-	}
-	trackResponse, err := api("/track/state", http.MethodGet, "")
-	if err != nil {
-		http.Error(w, "playback state unavailable", http.StatusBadGateway)
-		return
-	}
-	var state struct {
-		ID string `json:"id"`
-	}
-	decodeErr := json.NewDecoder(trackResponse.Body).Decode(&state)
-	trackResponse.Body.Close()
-	if trackResponse.StatusCode != http.StatusOK || decodeErr != nil || state.ID == "" {
-		http.Error(w, "playback state unavailable", http.StatusBadGateway)
-		return
-	}
-
-	path := "/nav/watch"
-	payload, _ := json.Marshal(map[string]string{"videoId": id})
-	body := string(payload)
-	current := uniqueQueuePosition(queue.Items, state.ID)
-	switch {
-	case current == selected:
-		path, body = "/track/play", "{}"
-	case current >= 0 && selected == current+1:
-		path, body = "/track/next", "{}"
-	}
-	resp, err := api(path, http.MethodPost, body)
-	if err != nil {
-		http.Error(w, "queue playback command failed", http.StatusBadGateway)
-		return
-	}
-	resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		http.Error(w, "queue playback command failed", http.StatusBadGateway)
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -159,10 +110,7 @@ func queueView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lastSkinState.RLock()
-	currentID := lastSkinState.value.trackID
-	lastSkinState.RUnlock()
-	current := uniqueQueuePosition(queue.Items, currentID)
+	current := queue.CurrentPosition
 	pages := (len(queue.Items)-1)/queuePageSize + 1
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page <= 0 {

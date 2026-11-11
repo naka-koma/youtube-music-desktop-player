@@ -10,7 +10,6 @@ import (
 	"image"
 	"image/png"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -45,23 +44,12 @@ var bookmarkHTTP = &http.Client{
 }
 
 func playBookmark(playlistID string) bool {
-	payload, _ := json.Marshal(map[string]any{"playlistId": playlistID, "play": true})
-	req, err := apiRequest("/nav/playlist", http.MethodPost, string(payload))
+	result, err := backend.Command(playbackCommand{Action: actionPlayBookmark, ID: playlistID})
 	if err != nil {
 		return false
 	}
-	host := req.URL.Hostname()
-	if !strings.EqualFold(host, "localhost") && !net.ParseIP(host).IsLoopback() {
-		return false
-	}
-	playback := *client
-	playback.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := playback.Do(req)
-	if err != nil {
-		return false
-	}
-	defer resp.Body.Close()
-	return resp.StatusCode >= 200 && resp.StatusCode < 300
+	defer result.Body.Close()
+	return successful(result.StatusCode)
 }
 
 func bookmarkPlaylistID(raw string) (string, string) {

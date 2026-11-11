@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -48,32 +49,6 @@ type trackThumbnail struct {
 	Height int    `json:"height"`
 }
 
-type trackInfo struct {
-	ID    string `json:"id"`
-	Video struct {
-		VideoID   string `json:"videoId"`
-		Title     string `json:"title"`
-		Author    string `json:"author"`
-		Thumbnail struct {
-			Thumbnails []trackThumbnail `json:"thumbnails"`
-		} `json:"thumbnail"`
-	} `json:"video"`
-	Meta struct {
-		Thumbnail string `json:"thumbnail"`
-		Liked     bool   `json:"liked"`
-	} `json:"meta"`
-}
-type playbackInfo struct {
-	Playing    bool    `json:"playing"`
-	Progress   float64 `json:"progress"`
-	Duration   float64 `json:"duration"`
-	Percentage float64 `json:"percentage"`
-	Shuffle    bool    `json:"shuffle"`
-	Loop       bool    `json:"loop"`
-}
-type volumeInfo struct {
-	Volume float64 `json:"volume"`
-}
 type skinSnapshot struct {
 	trackID        string
 	artCandidates  []trackThumbnail
@@ -97,7 +72,6 @@ type skinSnapshot struct {
 }
 
 var dataDir = filepath.Join(os.Getenv("LOCALAPPDATA"), "AmbientMusicDashboard")
-var apiBase = env("YTM_API_URL", "http://127.0.0.1:13091")
 var client = &http.Client{Timeout: 4 * time.Second}
 var artCache struct {
 	sync.RWMutex
@@ -152,19 +126,11 @@ type volumeUpdate struct {
 var volumeUpdates = make(chan volumeUpdate, 1)
 
 func currentVolume() (float64, error) {
-	resp, err := api("/track/volume", "POST", "{}")
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	var volume volumeInfo
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 || json.NewDecoder(resp.Body).Decode(&volume) != nil {
-		return 0, fmt.Errorf("volume is unavailable")
-	}
-	return volume.Volume, nil
+	volume, err := backend.Volume()
+	return volume.Percent, err
 }
 
-func setVolume(value float64) (*http.Response, error) {
+func setVolume(value float64) (commandResult, error) {
 	volumeCommandMu.Lock()
 	defer volumeCommandMu.Unlock()
 	if value < 0 {
@@ -173,11 +139,10 @@ func setVolume(value float64) (*http.Response, error) {
 	if value > 100 {
 		value = 100
 	}
-	payload, _ := json.Marshal(map[string]any{"volume": value})
-	return api("/track/volume", "POST", string(payload))
+	return backend.Command(playbackCommand{Action: actionSetVolume, Value: value})
 }
 
-func seekToPercent(percent float64) (*http.Response, error) {
+func seekToPercent(percent float64) (commandResult, error) {
 	if percent < 0 {
 		percent = 0
 	}
@@ -188,23 +153,16 @@ func seekToPercent(percent float64) (*http.Response, error) {
 	duration := playbackDuration.seconds
 	playbackDuration.RUnlock()
 	if duration <= 0 {
-		resp, err := api("/track/state", "GET", "")
+		seconds, err := backend.SeekDuration()
 		if err != nil {
-			return nil, err
+			return commandResult{}, err
 		}
-		var playback playbackInfo
-		body := readBody(resp)
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 || json.Unmarshal(body, &playback) != nil || playback.Duration <= 0 {
-			return nil, fmt.Errorf("track duration is unavailable")
-		}
-		duration = playback.Duration
+		duration = seconds
 		playbackDuration.Lock()
 		playbackDuration.seconds = duration
 		playbackDuration.Unlock()
 	}
-	targetMilliseconds := duration * percent * 10
-	payload, _ := json.Marshal(map[string]any{"time": targetMilliseconds, "type": "seek"})
-	return api("/track/seek", "POST", string(payload))
+	return backend.Command(playbackCommand{Action: actionSeek, Value: duration * percent / 100})
 }
 
 func seekOptimistically(percent float64) error {
@@ -227,9 +185,7 @@ func seekOptimistically(percent float64) error {
 	optimisticSeek.Unlock()
 
 	go func() {
-		targetMilliseconds := target * 1000
-		payload, _ := json.Marshal(map[string]any{"time": targetMilliseconds, "type": "seek"})
-		resp, err := api("/track/seek", "POST", string(payload))
+		resp, err := backend.Command(playbackCommand{Action: actionSeek, Value: target})
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
@@ -256,39 +212,19 @@ func env(k, fallback string) string {
 	}
 	return fallback
 }
-func api(path, method, body string) (*http.Response, error) {
-	req, err := apiRequest(path, method, body)
-	if err != nil {
-		return nil, err
-	}
-	return client.Do(req)
+func successful(status int) bool {
+	return status >= 200 && status < 300
 }
 
-func apiRequest(path, method, body string) (*http.Request, error) {
-	var r io.Reader
-	if body != "" {
-		r = strings.NewReader(body)
-	}
-	req, err := http.NewRequest(method, apiBase+path, r)
-	if err != nil {
-		return nil, err
-	}
-	if body != "" {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	if token, err := os.ReadFile(filepath.Join(dataDir, "token")); err == nil {
-		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(token)))
-	}
-	return req, nil
-}
-func readBody(r *http.Response) json.RawMessage {
-	defer r.Body.Close()
-	b, _ := io.ReadAll(r.Body)
+func readBody(body io.ReadCloser) json.RawMessage {
+	defer body.Close()
+	b, _ := io.ReadAll(body)
 	if !json.Valid(b) {
 		return json.RawMessage(`null`)
 	}
 	return b
 }
+
 func write(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(v)
@@ -326,18 +262,9 @@ func cacheArtwork(videoID, fallbackURL string) string {
 	artCache.failedID = ""
 	artCache.Unlock()
 	go func() {
-		var data []byte
-		mimeType := ""
-		resp, err := api("/track/thumbnail?id="+url.QueryEscape(videoID), "GET", "")
-		if err == nil {
-			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				data, _ = io.ReadAll(resp.Body)
-				mimeType = resp.Header.Get("Content-Type")
-			}
-			resp.Body.Close()
-		}
+		data, mimeType := backend.Artwork(videoID)
 		if len(data) == 0 && fallbackURL != "" {
-			resp, err = client.Get(fallbackURL)
+			resp, err := client.Get(fallbackURL)
 			if err == nil {
 				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 					data, _ = io.ReadAll(resp.Body)
@@ -413,14 +340,8 @@ func collectSkinState() skinSnapshot {
 		return snapshot
 	}
 	result := skinSnapshot{Connected: false, Title: "YTMDesktop2 unavailable", Author: "Start YTMDesktop2 to listen", Position: "0:00 / 0:00", Elapsed: "0:00", Total: "0:00", Thumbnail: cachedArtworkURL()}
-	tr, err := api("/track", "GET", "")
-	if err != nil {
-		selectBackgroundTrack("", false)
-		result.BackgroundFile = backgroundFileName()
-		return result
-	}
-	trackBytes := readBody(tr)
-	if tr.StatusCode < 200 || tr.StatusCode >= 300 {
+	track, err := backend.Track()
+	if err != nil && !errors.Is(err, errInvalidTrack) {
 		selectBackgroundTrack("", false)
 		result.BackgroundFile = backgroundFileName()
 		return result
@@ -428,58 +349,39 @@ func collectSkinState() skinSnapshot {
 	result.Connected = true
 	result.Title = "Nothing playing"
 	result.Author = "Choose a playlist to begin"
-	var track trackInfo
-	if json.Unmarshal(trackBytes, &track) == nil && track.Video.Title != "" {
-		result.Title = track.Video.Title
-		result.Author = track.Video.Author
-		result.Liked = track.Meta.Liked
-		art := track.Meta.Thumbnail
-		if art == "" && len(track.Video.Thumbnail.Thumbnails) > 0 {
-			art = track.Video.Thumbnail.Thumbnails[len(track.Video.Thumbnail.Thumbnails)-1].URL
-		}
-		videoID := track.ID
-		if videoID == "" {
-			videoID = track.Video.VideoID
-		}
-		result.trackID = videoID
-		result.artCandidates = append(result.artCandidates, track.Video.Thumbnail.Thumbnails...)
-		if track.Meta.Thumbnail != "" {
-			result.artCandidates = append(result.artCandidates, trackThumbnail{URL: track.Meta.Thumbnail})
-		}
-		selectBackgroundTrack(videoID, videoID != "")
-		result.Thumbnail = cacheArtwork(videoID, art)
+	if track.Title != "" {
+		result.Title = track.Title
+		result.Author = track.Artist
+		result.Liked = track.Liked
+		result.trackID = track.VideoID
+		result.artCandidates = track.ArtCandidates
+		selectBackgroundTrack(track.VideoID, track.VideoID != "")
+		result.Thumbnail = cacheArtwork(track.VideoID, track.ArtworkURL)
 	} else {
 		selectBackgroundTrack("", false)
 		result.Thumbnail = cachedArtworkURL()
 	}
-	type stateResult struct {
-		playback playbackInfo
-		volume   float64
-		err      error
+	type playbackRead struct {
+		state backendPlayback
+		err   error
 	}
-	stateCh := make(chan stateResult, 1)
-	volumeCh := make(chan stateResult, 1)
+	type volumeRead struct {
+		state backendVolume
+		err   error
+	}
+	stateCh := make(chan playbackRead, 1)
+	volumeCh := make(chan volumeRead, 1)
 	go func() {
-		sr, err := api("/track/state", "GET", "")
-		if err != nil {
-			stateCh <- stateResult{err: err}
-			return
-		}
-		defer sr.Body.Close()
-		var playback playbackInfo
-		if sr.StatusCode < 200 || sr.StatusCode >= 300 || json.NewDecoder(sr.Body).Decode(&playback) != nil {
-			stateCh <- stateResult{err: fmt.Errorf("playback state is unavailable")}
-			return
-		}
-		stateCh <- stateResult{playback: playback}
+		state, err := backend.Playback()
+		stateCh <- playbackRead{state, err}
 	}()
 	go func() {
-		volume, err := currentVolume()
-		volumeCh <- stateResult{volume: volume, err: err}
+		volume, err := backend.Volume()
+		volumeCh <- volumeRead{volume, err}
 	}()
 	playbackResult, volumeResult := <-stateCh, <-volumeCh
 	if playbackResult.err == nil {
-		playback := playbackResult.playback
+		playback := playbackResult.state
 		playbackDuration.Lock()
 		playbackDuration.seconds = playback.Duration
 		playbackDuration.Unlock()
@@ -491,29 +393,29 @@ func collectSkinState() skinSnapshot {
 			} else {
 				playback.Progress = target
 				if playback.Duration > 0 {
-					playback.Percentage = target / playback.Duration * 100
+					playback.LegacyPercentage = target / playback.Duration * 100
 				}
 			}
 		} else {
 			optimisticSeek.expires = time.Time{}
 		}
 		optimisticSeek.Unlock()
-		result.Playing = playback.Playing
+		result.Playing = playback.Status == playbackPlaying
 		result.Progress = playback.Progress
 		result.Duration = playback.Duration
-		result.Percentage = playback.Percentage
-		result.Shuffle = playback.Shuffle
-		result.Repeat = playback.Loop
+		result.Percentage = playback.LegacyPercentage
+		result.Shuffle = playback.LegacyShuffle
+		result.Repeat = playback.LegacyRepeat
 		result.Position = formatTime(playback.Progress) + " / " + formatTime(playback.Duration)
 		result.Elapsed = formatTime(playback.Progress)
 		result.Total = formatTime(playback.Duration)
 	}
 	if volumeResult.err == nil {
-		result.Volume = volumeResult.volume
-		result.Muted = volumeResult.volume <= 0
-		if volumeResult.volume > 0 {
+		result.Volume = volumeResult.state.Percent
+		result.Muted = volumeResult.state.Muted
+		if volumeResult.state.Percent > 0 {
 			volumeState.Lock()
-			volumeState.previous = volumeResult.volume
+			volumeState.previous = volumeResult.state.Percent
 			volumeState.Unlock()
 		}
 	}
@@ -551,6 +453,14 @@ func optimisticStateSnapshot() (skinSnapshot, bool) {
 	snapshot.Total = formatTime(snapshot.Duration)
 	return snapshot, true
 }
+
+var skinCommands = map[string]playbackCommand{
+	"toggle": {Action: actionToggle}, "next": {Action: actionNext}, "prev": {Action: actionPrevious},
+	"shuffle": {Action: actionToggleShuffle}, "repeat": {Action: actionToggleRepeat},
+	"volup": {Action: actionAdjustVolume, Value: 5}, "voldown": {Action: actionAdjustVolume, Value: -5},
+	"forward": {Action: actionRelativeSeek, Value: 10}, "backward": {Action: actionRelativeSeek, Value: -10},
+}
+
 func main() {
 	if handleFontCommand(os.Args[1:]) {
 		return
@@ -576,6 +486,12 @@ func main() {
 			}
 		}
 	}
+	addr := "127.0.0.1:38471"
+	fmt.Println("Ambient Music bridge listening on http://" + addr)
+	log.Fatal(http.ListenAndServe(addr, newSkinMux()))
+}
+
+func newSkinMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /queue/view", queueView)
 	mux.HandleFunc("POST /queue/play", queuePlay)
@@ -756,47 +672,30 @@ func main() {
 	})
 	mux.HandleFunc("POST /{cmd}", func(w http.ResponseWriter, r *http.Request) {
 		cmd := r.PathValue("cmd")
-		routes := map[string]string{"toggle": "/track/toggle-play-state", "next": "/track/next", "prev": "/track/prev", "shuffle": "/track/shuffle", "repeat": "/track/repeat", "volup": "/track/volume-up", "voldown": "/track/volume-down", "forward": "/track/forward", "backward": "/track/backward"}
 		if cmd == "playlist" {
 			http.Error(w, "use /playlist/{index}", 400)
 			return
 		}
-		path, ok := routes[cmd]
+		command, ok := skinCommands[cmd]
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		body := "{}"
-		if cmd == "volup" || cmd == "voldown" {
-			body = `{"amount":5}`
-		}
-		if cmd == "forward" || cmd == "backward" {
-			// YTMDesktop2 consumes seek offsets in milliseconds, while state progress is seconds.
-			body = `{"time":10000}`
-		}
-		resp, err := api(path, "POST", body)
+		resp, err := backend.Command(command)
 		if err != nil {
 			write(w, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
-		responseBody := readBody(resp)
+		responseBody := readBody(resp.Body)
 		w.WriteHeader(resp.StatusCode)
 		_, _ = w.Write(responseBody)
 	})
 	mux.HandleFunc("POST /like", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := api("/track", "GET", "")
-		if err != nil {
-			http.Error(w, err.Error(), 502)
+		result, err := backend.Command(playbackCommand{Action: actionToggleLike})
+		if errors.Is(err, errTrackUnavailable) {
+			http.Error(w, err.Error(), 503)
 			return
 		}
-		trackBytes := readBody(resp)
-		var track trackInfo
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 || json.Unmarshal(trackBytes, &track) != nil {
-			http.Error(w, "track state is unavailable", 503)
-			return
-		}
-		payload, _ := json.Marshal(!track.Meta.Liked)
-		result, err := api("/track/like", "POST", string(payload))
 		if err != nil {
 			http.Error(w, err.Error(), 502)
 			return
@@ -827,8 +726,7 @@ func main() {
 			http.Error(w, "configure a YouTube playlist ID or share URL first", 400)
 			return
 		}
-		payload, _ := json.Marshal(map[string]any{"playlistId": id, "play": true})
-		resp, err := api("/nav/playlist", "POST", string(payload))
+		resp, err := backend.Command(playbackCommand{Action: actionPlayPlaylist, ID: id})
 		if err != nil {
 			http.Error(w, err.Error(), 502)
 			return
@@ -837,7 +735,5 @@ func main() {
 		w.WriteHeader(resp.StatusCode)
 		_, _ = io.Copy(w, resp.Body)
 	})
-	addr := "127.0.0.1:38471"
-	fmt.Println("Ambient Music bridge listening on http://" + addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	return mux
 }
