@@ -20,10 +20,6 @@ Setup installs the skin and bridge, starts YTMDesktop2 and the bridge, and guide
 
 To install from source, run `setup.bat` from the checkout. Setup builds the bridge using Go.
 
-### Creating a release
-
-Pushes to `main` and pull requests run the Windows tests and build the ZIP and SHA-256 checksum as Actions artifacts. Push a tag such as `v1.2.3` to publish a GitHub Release after the same checks pass. To build the distribution locally, run `pwsh -File Scripts/Build-Release.ps1` and find the files under `Bridge/dist/`.
-
 ### Local API connection
 
 The bridge listens on `127.0.0.1:38471`. The default YTMDesktop2 API port is `13091`. If you changed it, set the bridge's `YTM_API_URL` environment variable to the new address.
