@@ -1,5 +1,6 @@
 param(
-    [Parameter(Mandatory)][string]$RainmeterRoot
+    [Parameter(Mandatory)][string]$RainmeterRoot,
+    [string]$BridgeBinary
 )
 
 $ErrorActionPreference = 'Stop'
@@ -9,6 +10,11 @@ $skinFile = "$skinName.ini"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $skinSource = Join-Path (Join-Path $projectRoot 'Rainmeter') $skinName
 $bridgeSource = Join-Path $projectRoot 'Bridge'
+$bridgeName = 'YouTubeMusicDesktopPlayerBridge.exe'
+$legacyBridgeName = 'AmbientMusicBridge.exe'
+if ($BridgeBinary) {
+    $BridgeBinary = (Resolve-Path -LiteralPath $BridgeBinary).Path
+}
 $rainmeterExe = Join-Path $RainmeterRoot 'Rainmeter.exe'
 $rainmeterSettings = Join-Path $RainmeterRoot 'Rainmeter.ini'
 if (-not (Test-Path -LiteralPath $rainmeterSettings)) {
@@ -41,11 +47,15 @@ if ($migrate -and $settings -match $legacyHeaders -and $settings -match $newHead
 
 $stagedBridge = Join-Path ([IO.Path]::GetTempPath()) ("yt-music-player-" + [guid]::NewGuid().ToString('N') + ".exe")
 try {
-    Push-Location $bridgeSource
-    try {
-        & go build -trimpath -ldflags '-H=windowsgui' -o $stagedBridge .
-        if ($LASTEXITCODE -ne 0) { throw 'Go bridge build failed.' }
-    } finally { Pop-Location }
+    if ($BridgeBinary) {
+        Copy-Item -LiteralPath $BridgeBinary -Destination $stagedBridge
+    } else {
+        Push-Location $bridgeSource
+        try {
+            & go build -trimpath -ldflags '-H=windowsgui' -o $stagedBridge .
+            if ($LASTEXITCODE -ne 0) { throw 'Go bridge build failed.' }
+        } finally { Pop-Location }
+    }
 
     $rainmeterRunning = Get-Process -Name Rainmeter -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $rainmeterExe }
@@ -63,10 +73,13 @@ try {
         if ($activeConfigs.Count) { Start-Sleep -Milliseconds 700 }
     }
 
-    $oldBridge = Join-Path $legacy '@Resources\Bridge\AmbientMusicBridge.exe'
-    $bridgeExe = Join-Path $target '@Resources\Bridge\AmbientMusicBridge.exe'
-    $runningBridge = Get-Process -Name AmbientMusicBridge -ErrorAction SilentlyContinue |
-        Where-Object { $_.Path -in $oldBridge, $bridgeExe }
+    $bridgeExe = Join-Path $target "@Resources\Bridge\$bridgeName"
+    $bridgePaths = foreach ($directory in $target, $legacy) {
+        Join-Path $directory "@Resources\Bridge\$bridgeName"
+        Join-Path $directory "@Resources\Bridge\$legacyBridgeName"
+    }
+    $runningBridge = Get-Process -Name 'AmbientMusicBridge', 'YouTubeMusicDesktopPlayerBridge' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Path -in $bridgePaths }
     if ($runningBridge) {
         $runningBridge | Stop-Process
         $runningBridge | Wait-Process -Timeout 5 -ErrorAction SilentlyContinue
@@ -118,6 +131,10 @@ try {
         Copy-Item -LiteralPath (Join-Path $bridgeSource 'playlists.json') -Destination $bridgeDir
     }
     Copy-Item -LiteralPath $stagedBridge -Destination $bridgeExe -Force
+    $retiredBridge = Join-Path $bridgeDir $legacyBridgeName
+    if (Test-Path -LiteralPath $retiredBridge -PathType Leaf) {
+        Remove-Item -LiteralPath $retiredBridge
+    }
     if ($rainmeterRunning) {
         if (-not $migrate -and $settings -notmatch $newHeaders -and (Test-Path -LiteralPath $rainmeterSettings)) {
             & $rainmeterExe '!WriteKeyValue' "$skinName\Fullscreen" 'LoadOrder' '-2147483648' $rainmeterSettings

@@ -129,7 +129,13 @@ if (-not $ytmExe) {
     if (-not $ytmExe) { throw 'The installer finished but YTMDesktop2 was not found. Start it once, then rerun setup.' }
 }
 
-Install-GoIfRequested
+$bundledBridge = Join-Path $projectRoot 'Bridge\bin\YouTubeMusicDesktopPlayerBridge.exe'
+$bridgeBinary = $null
+if (Test-Path -LiteralPath $bundledBridge -PathType Leaf) {
+    $bridgeBinary = $bundledBridge
+} else {
+    Install-GoIfRequested
+}
 
 if (-not $RainmeterRoot) {
     $rainmeterProcess = Get-Process Rainmeter -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -144,7 +150,7 @@ if (-not $RainmeterRoot -or -not (Test-Path (Join-Path $RainmeterRoot 'Rainmeter
     throw 'Rainmeter was not found. Rerun with -RainmeterRoot pointing to its installation folder.'
 }
 
-$bridgeExe = & (Join-Path $PSScriptRoot 'Install-PlayerSkin.ps1') -RainmeterRoot $RainmeterRoot
+$bridgeExe = & (Join-Path $PSScriptRoot 'Install-PlayerSkin.ps1') -RainmeterRoot $RainmeterRoot -BridgeBinary $bridgeBinary
 Write-Host "Installed the YouTube Music Desktop Player skin and bridge."
 
 $runningYtm = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ytmExe } | Select-Object -First 1

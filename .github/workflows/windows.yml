@@ -1,0 +1,74 @@
+name: Windows build and release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Test bridge
+        working-directory: Bridge
+        run: go test ./...
+      - name: Vet bridge
+        working-directory: Bridge
+        run: go vet ./...
+      - name: Build distribution
+        run: ./Scripts/Build-Release.ps1
+      - name: Check packaged installation
+        run: |
+          $package = Join-Path $env:RUNNER_TEMP 'player-package'
+          $rainmeter = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'test-rainmeter')
+          New-Item -ItemType File -Path (Join-Path $rainmeter.FullName 'Rainmeter.ini') | Out-Null
+          Expand-Archive -LiteralPath Bridge/dist/youtube-music-desktop-player-windows-x64.zip -DestinationPath $package
+          $binary = Join-Path $package 'Bridge/bin/YouTubeMusicDesktopPlayerBridge.exe'
+          $installer = Join-Path $package 'Scripts/Install-PlayerSkin.ps1'
+          $installed = & $installer -RainmeterRoot $rainmeter.FullName -BridgeBinary $binary
+          if ((Get-FileHash -LiteralPath $installed).Hash -ne (Get-FileHash -LiteralPath $binary).Hash) {
+            throw 'The installer did not copy the bundled bridge.'
+          }
+      - uses: actions/upload-artifact@v6
+        with:
+          name: windows-x64
+          path: |
+            Bridge/dist/youtube-music-desktop-player-windows-x64.zip
+            Bridge/dist/SHA256SUMS.txt
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: windows-x64
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Release tags must use vMAJOR.MINOR.PATCH.' >&2
+            exit 1
+          fi
+          sha256sum -c SHA256SUMS.txt
+          gh release create "$TAG" --verify-tag --generate-notes \
+            youtube-music-desktop-player-windows-x64.zip SHA256SUMS.txt

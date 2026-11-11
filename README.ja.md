@@ -11,12 +11,16 @@ YTMDesktop2 と連携する Windows 向けの Rainmeter スキンです。デス
 
 ## セットアップ
 
-1. Rainmeter をインストールします。
-2. リポジトリのルートで `setup.bat` を実行します。Git Bash や WSL からは `bash ./setup.sh` でも起動できます。YTMDesktop2 や Go が見つからない場合は、セットアップがインストールするか確認します。
+1. Rainmeter をインストールし、一度起動します。
+2. [GitHub Releases](https://github.com/naka-koma/youtube-music-desktop-player/releases) から Windows x64 用の `youtube-music-desktop-player-windows-x64.zip` をダウンロードして展開し、`setup.bat` を実行します。配布ZIPには `YouTubeMusicDesktopPlayerBridge.exe` が入っているため、Goのインストールは不要です。
 3. 案内に沿って YTMDesktop2 の「Settings → API & Integrations → API」でローカル API を有効にします。バインド先は `127.0.0.1` に設定します。認証が有効な場合は YTMDesktop2 でペアリングを承認します。
 4. Rainmeter の管理画面で「スキン → YouTube Music Desktop Player」を開きます。次に `YouTube Music Desktop Player.ini` を読み込みます。
 
-セットアップはスキンを配置し、Go ブリッジをビルドして起動します。認証トークンは現在の Windows ユーザーのローカルデータに保存します。
+セットアップはスキンとブリッジを配置して起動します。認証トークンは現在の Windows ユーザーのローカルデータに保存します。ソースからインストールする場合も `setup.bat` を実行できます。ソースからは Go でブリッジをビルドします。
+
+### リリースの作成
+
+`main` へのプッシュやプルリクエストで Windows ビルドとテストが走り、Actions に配布ZIPとSHA-256が残ります。リリースするコミットに `v1.2.3` 形式のタグを付けてプッシュすると、同じビルドを検証したあと GitHub Release を公開します。ローカルでは `pwsh -File Scripts/Build-Release.ps1` で `Bridge/dist/` に同じファイルを作れます。
 
 ### API の接続先
 

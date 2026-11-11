@@ -11,12 +11,18 @@ A Windows Rainmeter skin for controlling YouTube Music through YTMDesktop2.
 
 ## Setup
 
-1. Run `setup.bat` from the repository root on Windows. From Git Bash or WSL, run `bash ./setup.sh`. Both launchers run `Scripts/Setup.ps1` through PowerShell.
-2. If YTMDesktop2 or Go is missing, choose whether to install it. Setup uses the official stable GitHub release for YTMDesktop2 and winget for Go.
+1. Install Rainmeter and launch it once.
+2. Download and extract `youtube-music-desktop-player-windows-x64.zip` from [GitHub Releases](https://github.com/naka-koma/youtube-music-desktop-player/releases), then run `setup.bat`. The ZIP bundles `YouTubeMusicDesktopPlayerBridge.exe`, so the packaged install requires no Go toolchain.
 3. Follow the prompts to enable the YTMDesktop2 local API under **Settings → API & Integrations → API**. Keep the bind address on `127.0.0.1` and enable authorization when pairing.
 4. In Manage Rainmeter, load `YouTube Music Desktop Player\YouTube Music Desktop Player.ini`.
 
 Setup installs the skin and bridge, starts YTMDesktop2 and the bridge, and guides you through pairing. It saves the API token outside the skin and repository, in the current user's LocalAppData, with restricted file permissions.
+
+To install from source, run `setup.bat` from the checkout. Setup builds the bridge using Go.
+
+### Creating a release
+
+Pushes to `main` and pull requests run the Windows tests and build the ZIP and SHA-256 checksum as Actions artifacts. Push a tag such as `v1.2.3` to publish a GitHub Release after the same checks pass. To build the distribution locally, run `pwsh -File Scripts/Build-Release.ps1` and find the files under `Bridge/dist/`.
 
 ### Local API connection
 
