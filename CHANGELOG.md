@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.1] - 2026-11-14
+
+- Fix the mini-player playback button. It now shows Pause while playing and Play while paused, and redraws when the playback state arrives. ([#1](https://github.com/naka-koma/youtube-music-desktop-player/issues/1))
+- Move YTMDesktop2 playback integration behind an internal Go interface while preserving the Rainmeter skin's local HTTP API.
+
 ## [1.0.0] - 2026-11-11
 
 First public release for Windows x64.
@@ -11,4 +16,5 @@ First public release for Windows x64.
 - The skin starts the bridge automatically and stores generated artwork in the Windows temporary folder.
 - The release ZIP includes the bridge and `setup.bat`. See the [setup instructions](README.md#setup) and [player guide](docs/usage.md).
 
+[1.0.1]: https://github.com/naka-koma/youtube-music-desktop-player/releases/tag/v1.0.1
 [1.0.0]: https://github.com/naka-koma/youtube-music-desktop-player/releases/tag/v1.0.0
