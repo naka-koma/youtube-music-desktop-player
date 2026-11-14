@@ -6,7 +6,7 @@ A Windows Rainmeter skin for controlling YouTube Music through YTMDesktop2.
 
 ## Features
 
-- View the current track and artwork, control playback and volume, and browse the play queue.
+- View the current track and artwork, control playback and volume, and browse the play queue. The playback button shows Pause while playing and Play while paused.
 - Save playlists as local bookmarks or quick slots, and import your own YouTube playlists into quick slots.
 - Open a fullscreen artwork view on a monitor of your choice and customize the background.
 - Customize fonts and choose Power Saver, Balanced, or Smooth rendering. Long titles scroll in Balanced and Smooth modes.
